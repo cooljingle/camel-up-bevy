@@ -91,6 +91,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y imagemagick
 
+          # Create icons directory
+          mkdir -p web/icons
+
           # Create a simple pyramid icon using ImageMagick
           # 512x512 version
           convert -size 512x512 xc:'#87CEEB' \
