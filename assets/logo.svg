@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <!-- Background circle -->
+  <circle cx="100" cy="100" r="95" fill="#2D1B0E" stroke="#D4A84B" stroke-width="4"/>
+
+  <!-- Pyramid in background -->
+  <polygon points="30,145 100,60 170,145" fill="#C4993D" opacity="0.3"/>
+  <polygon points="100,60 170,145 130,145" fill="#A67C2E" opacity="0.3"/>
+
+  <!-- Camel body -->
+  <ellipse cx="100" cy="115" rx="45" ry="25" fill="#D4A84B"/>
+
+  <!-- Camel hump -->
+  <ellipse cx="85" cy="95" rx="18" ry="20" fill="#D4A84B"/>
+  <ellipse cx="115" cy="98" rx="15" ry="17" fill="#D4A84B"/>
+
+  <!-- Camel neck -->
+  <path d="M55 110 Q45 85 50 60 Q55 50 65 55 Q70 60 68 75 L70 105" fill="#D4A84B"/>
+
+  <!-- Camel head -->
+  <ellipse cx="52" cy="52" rx="18" ry="12" fill="#D4A84B"/>
+
+  <!-- Camel snout -->
+  <ellipse cx="38" cy="55" rx="10" ry="7" fill="#C49A3D"/>
+
+  <!-- Camel eye -->
+  <circle cx="48" cy="48" r="3" fill="#2D1B0E"/>
+  <circle cx="49" cy="47" r="1" fill="white"/>
+
+  <!-- Camel ear -->
+  <ellipse cx="62" cy="42" rx="5" ry="8" fill="#C49A3D"/>
+
+  <!-- Camel legs -->
+  <rect x="65" y="130" width="8" height="35" rx="3" fill="#C49A3D"/>
+  <rect x="85" y="130" width="8" height="35" rx="3" fill="#C49A3D"/>
+  <rect x="110" y="130" width="8" height="35" rx="3" fill="#C49A3D"/>
+  <rect x="130" y="130" width="8" height="35" rx="3" fill="#C49A3D"/>
+
+  <!-- Camel hooves -->
+  <ellipse cx="69" cy="167" rx="5" ry="3" fill="#8B5A2B"/>
+  <ellipse cx="89" cy="167" rx="5" ry="3" fill="#8B5A2B"/>
+  <ellipse cx="114" cy="167" rx="5" ry="3" fill="#8B5A2B"/>
+  <ellipse cx="134" cy="167" rx="5" ry="3" fill="#8B5A2B"/>
+
+  <!-- Camel tail -->
+  <path d="M145 115 Q160 110 158 125 Q155 135 150 130" stroke="#C49A3D" stroke-width="4" fill="none" stroke-linecap="round"/>
+  <ellipse cx="150" cy="132" rx="4" ry="6" fill="#8B5A2B"/>
+
+  <!-- Racing saddle/blanket -->
+  <path d="M70 95 Q100 85 130 95 L125 110 Q100 100 75 110 Z" fill="#E63946"/>
+  <path d="M75 100 Q100 92 120 100" stroke="#FFD700" stroke-width="2" fill="none"/>
+
+  <!-- Decorative dots on blanket -->
+  <circle cx="85" cy="102" r="2" fill="#FFD700"/>
+  <circle cx="100" cy="100" r="2" fill="#FFD700"/>
+  <circle cx="115" cy="102" r="2" fill="#FFD700"/>
+</svg>

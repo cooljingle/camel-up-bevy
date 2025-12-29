@@ -1,0 +1,160 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'  # Triggers on version tags like v1.0.0
+    branches:
+      - main  # Also build on main for web deployment
+  workflow_dispatch:  # Allows manual triggering
+
+env:
+  CARGO_TERM_COLOR: always
+  GAME_NAME: camel-up
+
+jobs:
+  # Native builds for desktop platforms
+  build-native:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact_name: camel-up.exe
+            asset_name: camel-up-windows-x64.exe
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact_name: camel-up
+            asset_name: camel-up-macos-intel
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact_name: camel-up
+            asset_name: camel-up-macos-apple-silicon
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact_name: camel-up
+            asset_name: camel-up-linux-x64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-action@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install Linux dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libudev-dev libxkbcommon-dev
+
+      - name: Build release
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}
+          path: target/${{ matrix.target }}/release/${{ matrix.artifact_name }}
+
+  # WASM build for web deployment
+  build-wasm:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-action@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install wasm-bindgen-cli
+        run: cargo install wasm-bindgen-cli
+
+      - name: Build WASM
+        run: cargo build --release --target wasm32-unknown-unknown
+
+      - name: Generate JS bindings
+        run: |
+          wasm-bindgen --out-dir ./dist --target web \
+            target/wasm32-unknown-unknown/release/camel-up.wasm
+
+      - name: Generate PWA icons
+        run: |
+          # Install ImageMagick for icon generation
+          sudo apt-get update
+          sudo apt-get install -y imagemagick
+
+          # Create a simple pyramid icon using ImageMagick
+          # 512x512 version
+          convert -size 512x512 xc:'#87CEEB' \
+            -fill '#EDC99A' -draw "rectangle 0,400 512,512" \
+            -fill '#D4A84B' -draw "polygon 256,50 480,450 256,450" \
+            -fill '#A07A30' -draw "polygon 256,50 32,450 256,450" \
+            -fill '#FFD700' -draw "circle 420,80 420,120" \
+            web/icons/icon-512.png
+
+          # 192x192 version
+          convert web/icons/icon-512.png -resize 192x192 web/icons/icon-192.png
+
+      - name: Copy web assets
+        run: |
+          cp web/index.html dist/
+          cp web/manifest.json dist/
+          cp web/sw.js dist/
+          mkdir -p dist/icons
+          cp web/icons/*.png dist/icons/
+          # Copy game assets if they exist
+          if [ -d "assets" ]; then
+            cp -r assets dist/
+          fi
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  # Deploy to GitHub Pages
+  deploy-pages:
+    needs: build-wasm
+    runs-on: ubuntu-latest
+
+    permissions:
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+  # Create GitHub Release with native builds
+  release:
+    needs: build-native
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: artifacts/**/*
+          generate_release_notes: true

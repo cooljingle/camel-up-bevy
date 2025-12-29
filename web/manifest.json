@@ -1,0 +1,25 @@
+{
+    "name": "Camel Up",
+    "short_name": "Camel Up",
+    "description": "Play the classic Camel Up board game in your browser! Race camels, place bets, and compete with friends.",
+    "start_url": "/",
+    "display": "fullscreen",
+    "orientation": "landscape",
+    "background_color": "#2d1f0f",
+    "theme_color": "#d4a84b",
+    "categories": ["games", "entertainment"],
+    "icons": [
+        {
+            "src": "icons/icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "any maskable"
+        },
+        {
+            "src": "icons/icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "any maskable"
+        }
+    ]
+}

@@ -1,0 +1,40 @@
+# Rust/Cargo
+/target/
+Cargo.lock
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Debug
+*.pdb
+
+# WASM build output
+/dist/
+/pkg/
+*.wasm
+
+# Environment
+.env
+.env.local
+
+# Temporary/downloaded files
+nul
+*.tar.gz
+*.zip
+
+# Claude
+.claude/

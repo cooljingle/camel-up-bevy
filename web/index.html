@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Camel Up</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#d4a84b">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="apple-touch-icon" href="icons/icon-192.png">
+    <meta name="description" content="Play the Camel Up board game in your browser!">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #2d1f0f;
+            touch-action: none;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        /* Canvas container - Bevy will insert canvas here */
+        body {
+            position: fixed;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+            /* Let Bevy control canvas size via fit_canvas_to_parent */
+        }
+
+        /* Splash screen - shown before game starts */
+        #splash {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: linear-gradient(135deg, #2d1f0f 0%, #4a3520 50%, #2d1f0f 100%);
+            color: #d4a84b;
+            font-family: 'Georgia', serif;
+            z-index: 2000;
+            cursor: pointer;
+        }
+        #splash.hidden {
+            display: none;
+        }
+        #splash h1 {
+            font-size: 4rem;
+            margin-bottom: 0.5rem;
+            text-shadow: 3px 3px 6px rgba(0,0,0,0.5);
+        }
+        #splash .subtitle {
+            font-size: 1.2rem;
+            opacity: 0.8;
+            margin-bottom: 3rem;
+        }
+        #splash .tap-prompt {
+            font-size: 1.5rem;
+            padding: 1rem 2rem;
+            border: 2px solid #d4a84b;
+            border-radius: 8px;
+            background: rgba(212, 168, 75, 0.1);
+            animation: pulse 2s ease-in-out infinite;
+        }
+        #splash .tap-prompt.loading {
+            animation: none;
+            opacity: 0.5;
+        }
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.05); opacity: 0.8; }
+        }
+        #splash .orientation-warning {
+            position: absolute;
+            bottom: 2rem;
+            font-size: 0.9rem;
+            opacity: 0.7;
+            display: none;
+        }
+        @media (orientation: portrait) {
+            #splash .orientation-warning {
+                display: block;
+            }
+        }
+
+        /* Loading screen - shown while WASM loads */
+        #loading {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: #2d1f0f;
+            color: #d4a84b;
+            font-family: sans-serif;
+            z-index: 1500;
+        }
+        #loading.active {
+            display: flex;
+        }
+        #loading h1 {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+        }
+        #loading .spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid #4a3520;
+            border-top-color: #d4a84b;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        #loading .progress {
+            margin-top: 1rem;
+            font-size: 0.9rem;
+            opacity: 0.8;
+        }
+
+        /* Fullscreen hint during gameplay */
+        #fullscreen-hint {
+            position: fixed;
+            bottom: 10px;
+            right: 10px;
+            background: rgba(0,0,0,0.7);
+            color: #d4a84b;
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-family: sans-serif;
+            font-size: 12px;
+            cursor: pointer;
+            z-index: 100;
+            transition: opacity 0.3s;
+            display: none;
+        }
+        #fullscreen-hint.visible {
+            display: block;
+        }
+        #fullscreen-hint:hover {
+            background: rgba(0,0,0,0.9);
+        }
+    </style>
+</head>
+<body>
+    <!-- Splash screen - requires tap to start (enables fullscreen) -->
+    <div id="splash">
+        <h1>Camel Up</h1>
+        <p class="subtitle">The Racing Board Game</p>
+        <div class="tap-prompt loading" id="tap-prompt">Loading...</div>
+        <p class="orientation-warning">Please rotate your device to landscape</p>
+    </div>
+
+    <!-- Loading screen - shown while WASM initializes -->
+    <div id="loading">
+        <h1>Camel Up</h1>
+        <div class="spinner"></div>
+        <p class="progress">Starting game...</p>
+    </div>
+
+    <!-- Fullscreen hint (desktop only) -->
+    <div id="fullscreen-hint">Press ESC to exit fullscreen</div>
+
+    <script type="module">
+        import init from './camel-up.js';
+
+        const splash = document.getElementById('splash');
+        const loading = document.getElementById('loading');
+        const tapPrompt = document.getElementById('tap-prompt');
+        const fsHint = document.getElementById('fullscreen-hint');
+
+        let wasmReady = false;
+        let wasmInit = null;
+
+        // Force canvas to match viewport dimensions and trigger Bevy resize
+        function resizeCanvas() {
+            const canvas = document.querySelector('canvas');
+            if (canvas) {
+                // Use visualViewport for accurate mobile dimensions (excludes URL bar)
+                const vv = window.visualViewport;
+                const width = vv ? vv.width : window.innerWidth;
+                const height = vv ? vv.height : window.innerHeight;
+
+                // Update body size so Bevy's fit_canvas_to_parent works correctly
+                document.body.style.width = width + 'px';
+                document.body.style.height = height + 'px';
+
+                // Dispatch a resize event so Bevy picks up the change
+                window.dispatchEvent(new Event('resize'));
+            }
+        }
+
+        // Listen for visualViewport changes (URL bar show/hide on mobile)
+        if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', resizeCanvas);
+        }
+
+        // Preload WASM in background
+        async function preloadWasm() {
+            try {
+                // Just prepare init, don't run yet
+                wasmInit = init;
+                wasmReady = true;
+                tapPrompt.textContent = 'Tap to Play';
+                tapPrompt.classList.remove('loading');
+            } catch (e) {
+                console.error('Failed to preload:', e);
+                tapPrompt.textContent = 'Failed to load. Tap to retry.';
+                tapPrompt.classList.remove('loading');
+            }
+        }
+
+        // Start the game after user interaction
+        async function startGame() {
+            if (!wasmReady) {
+                // Retry loading if failed
+                tapPrompt.textContent = 'Loading...';
+                tapPrompt.classList.add('loading');
+                await preloadWasm();
+                return;
+            }
+
+            // Request fullscreen (works because of user gesture)
+            try {
+                await document.documentElement.requestFullscreen();
+            } catch (e) {
+                console.log('Fullscreen not available:', e);
+            }
+
+            // Lock to landscape on mobile
+            if (screen.orientation && screen.orientation.lock) {
+                try {
+                    await screen.orientation.lock('landscape');
+                } catch (e) {
+                    console.log('Orientation lock not available:', e);
+                }
+            }
+
+            // Hide splash, show loading
+            splash.classList.add('hidden');
+            loading.classList.add('active');
+
+            // Now actually initialize and run WASM
+            try {
+                await wasmInit();
+                loading.classList.remove('active');
+
+                // Force canvas to fill viewport
+                resizeCanvas();
+                window.addEventListener('resize', resizeCanvas);
+                screen.orientation?.addEventListener('change', resizeCanvas);
+
+                // Delayed resize calls to catch late viewport updates
+                setTimeout(resizeCanvas, 100);
+                setTimeout(resizeCanvas, 500);
+                setTimeout(resizeCanvas, 1000);
+
+                // Show fullscreen hint on desktop (hidden on mobile)
+                if (!('ontouchstart' in window)) {
+                    fsHint.classList.add('visible');
+                    setTimeout(() => fsHint.classList.remove('visible'), 5000);
+                }
+            } catch (e) {
+                console.error('Failed to start game:', e);
+                loading.querySelector('.progress').textContent = 'Failed to start. Please refresh.';
+            }
+        }
+
+        // Handle splash screen tap
+        splash.addEventListener('click', startGame);
+        splash.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            startGame();
+        });
+
+        // Handle fullscreen hint click
+        fsHint.addEventListener('click', () => {
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            } else {
+                document.documentElement.requestFullscreen().catch(() => {});
+            }
+        });
+
+        // Update hint on fullscreen change
+        document.addEventListener('fullscreenchange', () => {
+            if (document.fullscreenElement) {
+                fsHint.textContent = 'Press ESC to exit fullscreen';
+            } else {
+                fsHint.textContent = 'Click for fullscreen';
+            }
+        });
+
+        // Start preloading immediately
+        preloadWasm();
+    </script>
+    <script>
+        // Register service worker for offline support (PWA)
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js')
+                    .then(reg => console.log('SW registered'))
+                    .catch(err => console.log('SW registration failed:', err));
+            });
+        }
+    </script>
+</body>
+</html>
