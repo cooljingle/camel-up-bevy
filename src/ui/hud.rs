@@ -800,11 +800,11 @@ pub fn game_hud_ui(
         }
 
         ui.add_enabled_ui(can_act, |ui| {
-            // Roll Pyramid button with highlight
+            // Roll Pyramid button with highlight (slightly bigger for better visibility)
             let roll_btn = egui::Button::new(
                 egui::RichText::new("Roll Pyramid Die (+$1)")
-                    .size(14.0)
-            ).min_size(egui::vec2(180.0, 30.0));
+                    .size(16.0)  // Increased from 14.0
+            ).min_size(egui::vec2(200.0, 36.0));  // Increased from 180x30
 
             let roll_response = ui.add(roll_btn);
             if roll_response.clicked() {
@@ -1005,7 +1005,17 @@ pub fn game_hud_ui(
     });
 
     // Right panel - All players and camel positions
-    egui::SidePanel::right("players_list").min_width(280.0).show(ctx, |ui| {
+    // Calculate panel width based on number of players (more players = wider panel)
+    // Base width of 220, plus 30 pixels per player, capped at 40% of screen width
+    let base_width = 220.0;
+    let per_player_width = 30.0;
+    let player_count = players.players.len() as f32;
+    let calculated_width = base_width + (per_player_width * player_count);
+    let screen_width = ctx.screen_rect().width();
+    let max_panel_width = screen_width * 0.4; // Max 40% of screen width
+    let panel_width = calculated_width.min(max_panel_width);
+
+    egui::SidePanel::right("players_list").min_width(panel_width).show(ctx, |ui| {
         egui::ScrollArea::vertical().show(ui, |ui| {
             ui.heading("Players");
             ui.separator();

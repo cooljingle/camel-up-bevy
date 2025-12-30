@@ -180,7 +180,7 @@ pub fn handle_pyramid_roll_action(
             }
 
             // Spawn animated dice sprite in center of board
-            let dice_pos = Vec3::new(0.0, 0.0, 100.0); // Center, high Z to be on top
+            let dice_pos = Vec3::new(0.0, 0.0, 5.0); // Center, lower Z so camels render on top
             let (dice_color, roll_value) = match &die_result {
                 DieRollResult::Regular { color, value } => {
                     (color.to_bevy_color(), *value)

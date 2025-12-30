@@ -953,8 +953,8 @@ pub fn crown_drop_system(
         // Interpolate Y position from start to target
         let current_y = animation.start_y + (target_y - animation.start_y) * eased_t;
 
-        // Follow camel's X position
-        crown_transform.translation.x = target_pos.x;
+        // Follow camel's X position, offset to the left for top-left placement
+        crown_transform.translation.x = target_pos.x - 10.0;  // Offset 10 pixels to the left
         crown_transform.translation.y = current_y;
 
         // Animation complete

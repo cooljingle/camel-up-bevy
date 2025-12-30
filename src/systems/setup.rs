@@ -605,13 +605,31 @@ pub fn setup_game(
 pub fn cleanup_game(
     mut commands: Commands,
     game_entities: Query<Entity, With<GameEntity>>,
+    crown_entities: Query<Entity, With<crate::systems::animation::CrownMarker>>,
     mut ui_state: ResMut<crate::ui::hud::UiState>,
+    mut camel_animations: ResMut<crate::ui::hud::CamelPositionAnimations>,
 ) {
+    // Despawn all game entities
     for entity in game_entities.iter() {
         commands.entity(entity).despawn();
     }
+
+    // Despawn crown entities (may not have GameEntity marker)
+    for entity in crown_entities.iter() {
+        commands.entity(entity).despawn();
+    }
+
+    // Remove game-specific resources
+    commands.remove_resource::<crate::ui::scoring::GameEndState>();
+    commands.remove_resource::<crate::ui::scoring::CelebrationState>();
+    commands.remove_resource::<InitialSetupRolls>();
+
     // Reset UI state
     *ui_state = crate::ui::hud::UiState::default();
+
+    // Reset camel position animations
+    camel_animations.positions.clear();
+
     info!("Game cleanup complete!");
 }
 
