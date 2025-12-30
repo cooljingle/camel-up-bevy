@@ -68,7 +68,7 @@ pub fn move_camel_system(
     mut crazy_camels: Query<(Entity, &CrazyCamel, &mut BoardPosition, &mut Transform), Without<Camel>>,
     board: Res<GameBoard>,
     mut movement_complete: MessageWriter<MovementCompleteEvent>,
-    placed_tiles: Option<Res<PlacedDesertTiles>>,
+    placed_tiles: Option<Res<PlacedSpectatorTiles>>,
     mut players: Option<ResMut<Players>>,
 ) {
     for event in events.read() {
@@ -93,7 +93,7 @@ pub fn move_camel_system(
         let mut crossed_finish = target_space >= TRACK_LENGTH;
         let mut land_underneath = false;  // For mirage tiles
 
-        // Check for desert tile at target space
+        // Check for spectator tile at target space
         if !crossed_finish {
             if let Some(ref tiles) = placed_tiles {
                 if let Some((owner_id, is_oasis)) = tiles.get_tile(target_space) {
@@ -202,8 +202,8 @@ pub fn move_camel_system(
             }
 
             // Place moving camels at bottom with multi-step animation
-            // Calculate the space before desert tile effect for proper waypoint generation
-            let pre_desert_space = start_space + event.spaces;
+            // Calculate the space before spectator tile effect for proper waypoint generation
+            let pre_spectator_space = start_space + event.spaces;
 
             for (i, (entity, _)) in camel_stack_positions.iter().enumerate() {
                 let new_stack_pos = i as u8;
@@ -214,7 +214,7 @@ pub fn move_camel_system(
                 let mut waypoints = generate_waypoints(
                     &board,
                     start_space,
-                    pre_desert_space.min(TRACK_LENGTH - 1),
+                    pre_spectator_space.min(TRACK_LENGTH - 1),
                     stack_offset,
                     z_index,
                     false,
@@ -253,8 +253,8 @@ pub fn move_camel_system(
             }
 
             // Move all the camels with multi-step animation
-            // Calculate the space before desert tile effect for proper waypoint generation
-            let pre_desert_space = start_space + event.spaces;
+            // Calculate the space before spectator tile effect for proper waypoint generation
+            let pre_spectator_space = start_space + event.spaces;
 
             for (i, (entity, _old_stack_pos)) in camel_stack_positions.iter().enumerate() {
                 let new_stack_pos = target_stack_height + i as u8;
@@ -265,14 +265,14 @@ pub fn move_camel_system(
                 let mut waypoints = generate_waypoints(
                     &board,
                     start_space,
-                    pre_desert_space.min(TRACK_LENGTH - 1),
+                    pre_spectator_space.min(TRACK_LENGTH - 1),
                     stack_offset,
                     z_index,
                     false,
                 );
 
                 // If oasis triggered, add extra space at the end
-                if final_space > pre_desert_space {
+                if final_space > pre_spectator_space {
                     let final_base_pos = board.get_position(final_space);
                     let final_pos = Vec3::new(final_base_pos.x, final_base_pos.y + stack_offset, z_index);
                     waypoints.push(final_pos);

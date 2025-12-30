@@ -7,7 +7,7 @@ use rand::Rng;
 use crate::components::*;
 use crate::systems::movement::get_leading_camel;
 use crate::systems::turn::{
-    TurnState, RollPyramidAction, TakeLegBetAction, PlaceRaceBetAction, PlaceDesertTileAction,
+    TurnState, RollPyramidAction, TakeLegBetAction, PlaceRaceBetAction, PlaceSpectatorTileAction,
 };
 use crate::ui::hud::UiState;
 
@@ -53,7 +53,7 @@ enum AiAction {
     RollPyramid,
     TakeLegBet(CamelColor),
     PlaceRaceBet { color: CamelColor, is_winner: bool },
-    PlaceDesertTile { space: u8, is_oasis: bool },
+    PlaceSpectatorTile { space: u8, is_oasis: bool },
 }
 
 /// Main AI decision system - runs when it's an AI player's turn
@@ -64,14 +64,15 @@ pub fn ai_decision_system(
     mut ai_timer: ResMut<AiThinkTimer>,
     time: Res<Time>,
     camels: Query<(&Camel, &BoardPosition)>,
+    crazy_camels: Query<(&CrazyCamel, &BoardPosition)>,
     leg_tiles: Res<LegBettingTiles>,
     pyramid: Res<Pyramid>,
-    placed_tiles: Res<PlacedDesertTiles>,
+    placed_tiles: Res<PlacedSpectatorTiles>,
     ui_state: Res<UiState>,
     mut roll_action: MessageWriter<RollPyramidAction>,
     mut leg_bet_action: MessageWriter<TakeLegBetAction>,
     mut race_bet_action: MessageWriter<PlaceRaceBetAction>,
-    mut desert_action: MessageWriter<PlaceDesertTileAction>,
+    mut spectator_action: MessageWriter<PlaceSpectatorTileAction>,
 ) {
     // Don't act during initial roll animations
     if !ui_state.initial_rolls_complete {
@@ -119,6 +120,7 @@ pub fn ai_decision_system(
     let available_actions = collect_available_actions(
         current,
         &camels,
+        &crazy_camels,
         &leg_tiles,
         &pyramid,
         &placed_tiles,
@@ -143,7 +145,7 @@ pub fn ai_decision_system(
         &mut roll_action,
         &mut leg_bet_action,
         &mut race_bet_action,
-        &mut desert_action,
+        &mut spectator_action,
     );
 }
 
@@ -151,9 +153,10 @@ pub fn ai_decision_system(
 fn collect_available_actions(
     player: &PlayerData,
     camels: &Query<(&Camel, &BoardPosition)>,
+    crazy_camels: &Query<(&CrazyCamel, &BoardPosition)>,
     leg_tiles: &LegBettingTiles,
     pyramid: &Pyramid,
-    placed_tiles: &PlacedDesertTiles,
+    placed_tiles: &PlacedSpectatorTiles,
 ) -> Vec<AiAction> {
     let mut actions = Vec::new();
 
@@ -175,22 +178,23 @@ fn collect_available_actions(
         actions.push(AiAction::PlaceRaceBet { color, is_winner: false });
     }
 
-    // Check desert tile placement
-    if player.has_desert_tile {
-        let valid_spaces = get_valid_desert_spaces(camels, placed_tiles);
+    // Check spectator tile placement
+    if player.has_spectator_tile {
+        let valid_spaces = get_valid_spectator_spaces(camels, crazy_camels, placed_tiles);
         for space in valid_spaces {
-            actions.push(AiAction::PlaceDesertTile { space, is_oasis: true });
-            actions.push(AiAction::PlaceDesertTile { space, is_oasis: false });
+            actions.push(AiAction::PlaceSpectatorTile { space, is_oasis: true });
+            actions.push(AiAction::PlaceSpectatorTile { space, is_oasis: false });
         }
     }
 
     actions
 }
 
-/// Get valid spaces where a desert tile can be placed
-fn get_valid_desert_spaces(
+/// Get valid spaces where a spectator tile can be placed
+fn get_valid_spectator_spaces(
     camels: &Query<(&Camel, &BoardPosition)>,
-    placed_tiles: &PlacedDesertTiles,
+    crazy_camels: &Query<(&CrazyCamel, &BoardPosition)>,
+    placed_tiles: &PlacedSpectatorTiles,
 ) -> Vec<u8> {
     let mut valid = Vec::new();
 
@@ -201,9 +205,10 @@ fn get_valid_desert_spaces(
             continue;
         }
 
-        // Can't place if there's a camel on the space
+        // Can't place if there's a camel on the space (including crazy camels)
         let has_camel = camels.iter().any(|(_, pos)| pos.space_index == space);
-        if has_camel {
+        let has_crazy_camel = crazy_camels.iter().any(|(_, pos)| pos.space_index == space);
+        if has_camel || has_crazy_camel {
             continue;
         }
 
@@ -382,15 +387,15 @@ fn choose_smart_action(
         return action;
     }
 
-    // Consider strategic desert tile placement
-    if player.has_desert_tile {
-        if let Some(leader_color) = leader {
+    // Consider strategic spectator tile placement
+    if player.has_spectator_tile {
+        if let Some(_leader_color) = leader {
             if let Some((_, leader_space, _)) = rankings.first() {
                 // Place oasis 2-3 spaces ahead of leader
                 let target_space = leader_space + 2;
                 if target_space < TRACK_LENGTH {
                     for action in actions {
-                        if let AiAction::PlaceDesertTile { space, is_oasis: true } = action {
+                        if let AiAction::PlaceSpectatorTile { space, is_oasis: true } = action {
                             if *space == target_space || *space == target_space + 1 {
                                 if rng.gen_bool(0.3) {
                                     return action.clone();
@@ -481,7 +486,7 @@ fn execute_action(
     roll_action: &mut MessageWriter<RollPyramidAction>,
     leg_bet_action: &mut MessageWriter<TakeLegBetAction>,
     race_bet_action: &mut MessageWriter<PlaceRaceBetAction>,
-    desert_action: &mut MessageWriter<PlaceDesertTileAction>,
+    spectator_action: &mut MessageWriter<PlaceSpectatorTileAction>,
 ) {
     match action {
         AiAction::RollPyramid => {
@@ -500,10 +505,10 @@ fn execute_action(
                 is_winner_bet: is_winner,
             });
         }
-        AiAction::PlaceDesertTile { space, is_oasis } => {
+        AiAction::PlaceSpectatorTile { space, is_oasis } => {
             let tile_type = if is_oasis { "oasis" } else { "mirage" };
             info!("AI chose to place {} on space {}", tile_type, space + 1);
-            desert_action.write(PlaceDesertTileAction {
+            spectator_action.write(PlaceSpectatorTileAction {
                 space_index: space,
                 is_oasis,
             });

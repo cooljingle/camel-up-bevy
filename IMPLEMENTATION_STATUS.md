@@ -105,19 +105,29 @@ src/
 │   └── dice.rs                # Pyramid, Die, DieRollResult, CrazyCamelDie
 ├── game/
 │   ├── mod.rs
-│   └── state.rs               # GameState enum
+│   ├── state.rs               # GameState enum
+│   ├── ai.rs                  # AI decision system, AiDifficulty, AiConfig
+│   ├── rules.rs               # Game rules
+│   └── scoring.rs             # Score calculation
 ├── systems/
 │   ├── mod.rs
 │   ├── setup.rs               # setup_game, cleanup_game, GameEntity
 │   ├── movement.rs            # move_camel_system, move_crazy_camel_system, get_leading_camel, etc.
 │   ├── turn.rs                # TurnState, action handlers, advance_turn_system, check_leg_end, check_game_end
-│   └── leg.rs                 # calculate_leg_scores, calculate_final_scores, reset_for_new_leg
+│   ├── leg.rs                 # calculate_leg_scores, calculate_final_scores, reset_for_new_leg
+│   ├── animation.rs           # Movement animations, dice roll effects, particles, fireworks, crown
+│   ├── input.rs               # Input handling
+│   └── render.rs              # Rendering systems
 └── ui/
     ├── mod.rs
     ├── main_menu.rs           # main_menu_ui
     ├── player_setup.rs        # player_setup_ui, PlayerSetupConfig
     ├── hud.rs                 # game_hud_ui, UiState, LastRoll, update_ui_on_roll
-    └── scoring.rs             # leg_scoring_ui, game_end_ui
+    ├── scoring.rs             # leg_scoring_ui, game_end_ui
+    ├── betting_panel.rs       # Betting UI panel
+    ├── race_betting.rs        # Race betting UI
+    ├── pyramid.rs             # Pyramid dice UI
+    └── characters.rs          # Character/camel UI elements
 ```
 
 ---
@@ -160,23 +170,25 @@ src/
 
 ---
 
-## Remaining Work / Future Enhancements
-
-### Phase 7: AI Players (Not Started)
+### Phase 7: AI Players ✅
 - AI decision system for non-human players
-- Evaluate leg betting based on camel positions
-- Evaluate race betting with probability estimation
+- `AiDifficulty` enum: Random, Basic, Smart
+- Basic AI: Evaluates leg betting based on camel positions, takes 5-value tiles on leaders
+- Smart AI: Probability estimation for leg bets, race betting with lead analysis
 - Desert tile placement heuristics
-- Difficulty levels: random, basic, smart
+- Configurable think delay for visible AI actions
 
-### Phase 8: Visual Polish (Not Started)
-- Smooth camel movement animations
-- Dice roll visual feedback
-- Hover effects on UI elements
-- Color-coded player indicators
-- Dice result popup that fades out
+### Phase 8: Visual Polish ✅
+- Smooth camel movement animations (hop-by-hop with easing)
+- Multi-phase dice roll animations (shake, settle, display, fade)
+- Particle effects on dice rolls
+- Firework celebration system for game end
+- Crown drop animation for winning camel
+- Ease-out bounce effects
 
-### Other Potential Enhancements
+---
+
+## Remaining Work / Future Enhancements
 - Sound effects
 - Save/load game state
 - Online multiplayer
@@ -185,9 +197,8 @@ src/
 ---
 
 ## Known Issues / Warnings
-- Some unused code warnings (dead code from initial scaffolding)
-- `reset_for_new_leg` function in leg.rs is unused (logic moved to scoring.rs UI)
-- Some struct fields marked as never read (placeholders for future use)
+- Minor unused variable warnings in scoring.rs (idx variables)
+- Some struct fields marked as never read (BoardSpace.index, DesertTile fields, CrazyCamelDie.value)
 
 ---
 

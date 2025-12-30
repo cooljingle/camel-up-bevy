@@ -41,65 +41,6 @@
             /* Let Bevy control canvas size via fit_canvas_to_parent */
         }
 
-        /* Splash screen - shown before game starts */
-        #splash {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            background: linear-gradient(135deg, #2d1f0f 0%, #4a3520 50%, #2d1f0f 100%);
-            color: #d4a84b;
-            font-family: 'Georgia', serif;
-            z-index: 2000;
-            cursor: pointer;
-        }
-        #splash.hidden {
-            display: none;
-        }
-        #splash h1 {
-            font-size: 4rem;
-            margin-bottom: 0.5rem;
-            text-shadow: 3px 3px 6px rgba(0,0,0,0.5);
-        }
-        #splash .subtitle {
-            font-size: 1.2rem;
-            opacity: 0.8;
-            margin-bottom: 3rem;
-        }
-        #splash .tap-prompt {
-            font-size: 1.5rem;
-            padding: 1rem 2rem;
-            border: 2px solid #d4a84b;
-            border-radius: 8px;
-            background: rgba(212, 168, 75, 0.1);
-            animation: pulse 2s ease-in-out infinite;
-        }
-        #splash .tap-prompt.loading {
-            animation: none;
-            opacity: 0.5;
-        }
-        @keyframes pulse {
-            0%, 100% { transform: scale(1); opacity: 1; }
-            50% { transform: scale(1.05); opacity: 0.8; }
-        }
-        #splash .orientation-warning {
-            position: absolute;
-            bottom: 2rem;
-            font-size: 0.9rem;
-            opacity: 0.7;
-            display: none;
-        }
-        @media (orientation: portrait) {
-            #splash .orientation-warning {
-                display: block;
-            }
-        }
-
         /* Loading screen - shown while WASM loads */
         #loading {
             position: fixed;
@@ -107,7 +48,7 @@
             left: 0;
             width: 100%;
             height: 100%;
-            display: none;
+            display: flex;
             flex-direction: column;
             justify-content: center;
             align-items: center;
@@ -116,8 +57,8 @@
             font-family: sans-serif;
             z-index: 1500;
         }
-        #loading.active {
-            display: flex;
+        #loading.hidden {
+            display: none;
         }
         #loading h1 {
             font-size: 2.5rem;
@@ -165,34 +106,34 @@
     </style>
 </head>
 <body>
-    <!-- Splash screen - requires tap to start (enables fullscreen) -->
-    <div id="splash">
-        <h1>Camel Up</h1>
-        <p class="subtitle">The Racing Board Game</p>
-        <div class="tap-prompt loading" id="tap-prompt">Loading...</div>
-        <p class="orientation-warning">Please rotate your device to landscape</p>
-    </div>
-
     <!-- Loading screen - shown while WASM initializes -->
     <div id="loading">
         <h1>Camel Up</h1>
         <div class="spinner"></div>
-        <p class="progress">Starting game...</p>
+        <p class="progress">Loading game...</p>
     </div>
 
     <!-- Fullscreen hint (desktop only) -->
     <div id="fullscreen-hint">Press ESC to exit fullscreen</div>
 
+    <script>
+        // Mobile device detection - runs before WASM loads
+        // Detects touch devices and small screens typical of mobile
+        (function() {
+            const hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+            const isSmallScreen = window.innerWidth < 768;
+            const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+            // Consider it mobile if it has touch AND (small screen OR mobile user agent)
+            window.isMobileDevice = hasTouch && (isSmallScreen || isMobileUA);
+        })();
+    </script>
+
     <script type="module">
         import init from './camel-up.js';
 
-        const splash = document.getElementById('splash');
         const loading = document.getElementById('loading');
-        const tapPrompt = document.getElementById('tap-prompt');
         const fsHint = document.getElementById('fullscreen-hint');
-
-        let wasmReady = false;
-        let wasmInit = null;
 
         // Force canvas to match viewport dimensions and trigger Bevy resize
         function resizeCanvas() {
@@ -217,55 +158,11 @@
             window.visualViewport.addEventListener('resize', resizeCanvas);
         }
 
-        // Preload WASM in background
-        async function preloadWasm() {
-            try {
-                // Just prepare init, don't run yet
-                wasmInit = init;
-                wasmReady = true;
-                tapPrompt.textContent = 'Tap to Play';
-                tapPrompt.classList.remove('loading');
-            } catch (e) {
-                console.error('Failed to preload:', e);
-                tapPrompt.textContent = 'Failed to load. Tap to retry.';
-                tapPrompt.classList.remove('loading');
-            }
-        }
-
-        // Start the game after user interaction
+        // Start the game immediately
         async function startGame() {
-            if (!wasmReady) {
-                // Retry loading if failed
-                tapPrompt.textContent = 'Loading...';
-                tapPrompt.classList.add('loading');
-                await preloadWasm();
-                return;
-            }
-
-            // Request fullscreen (works because of user gesture)
             try {
-                await document.documentElement.requestFullscreen();
-            } catch (e) {
-                console.log('Fullscreen not available:', e);
-            }
-
-            // Lock to landscape on mobile
-            if (screen.orientation && screen.orientation.lock) {
-                try {
-                    await screen.orientation.lock('landscape');
-                } catch (e) {
-                    console.log('Orientation lock not available:', e);
-                }
-            }
-
-            // Hide splash, show loading
-            splash.classList.add('hidden');
-            loading.classList.add('active');
-
-            // Now actually initialize and run WASM
-            try {
-                await wasmInit();
-                loading.classList.remove('active');
+                await init();
+                loading.classList.add('hidden');
 
                 // Force canvas to fill viewport
                 resizeCanvas();
@@ -288,13 +185,6 @@
             }
         }
 
-        // Handle splash screen tap
-        splash.addEventListener('click', startGame);
-        splash.addEventListener('touchend', (e) => {
-            e.preventDefault();
-            startGame();
-        });
-
         // Handle fullscreen hint click
         fsHint.addEventListener('click', () => {
             if (document.fullscreenElement) {
@@ -313,8 +203,8 @@
             }
         });
 
-        // Start preloading immediately
-        preloadWasm();
+        // Start game immediately
+        startGame();
     </script>
     <script>
         // Register service worker for offline support (PWA)

@@ -1,6 +1,8 @@
 use bevy::prelude::*;
 use rand::Rng;
+use std::f32::consts::TAU;
 use crate::components::{CamelColor, CrazyCamelColor, CrazyCamel};
+use crate::components::board::{PyramidRollButton, PyramidShakeAnimation, PyramidHovered, PyramidHoverBorder};
 use crate::systems::movement::{MoveCamelEvent, MoveCrazyCamelEvent};
 
 /// Component for entities that are animating their position
@@ -31,16 +33,6 @@ pub struct FadeOut {
     pub despawn_on_complete: bool,
 }
 
-impl FadeOut {
-    pub fn new(duration: f32) -> Self {
-        Self {
-            elapsed: 0.0,
-            duration,
-            despawn_on_complete: true,
-        }
-    }
-}
-
 /// Component for dice roll result display
 #[derive(Component)]
 pub struct DiceResultPopup {
@@ -56,10 +48,6 @@ impl Default for DiceResultPopup {
         }
     }
 }
-
-/// Marker component for the dice result text
-#[derive(Component)]
-pub struct DiceResultText;
 
 /// System to animate movement with easing
 pub fn animate_movement_system(
@@ -176,38 +164,6 @@ impl MultiStepMovementAnimation {
     }
 }
 
-/// Pulse animation component for highlighting
-#[derive(Component)]
-pub struct PulseAnimation {
-    pub base_scale: f32,
-    pub pulse_amount: f32,
-    pub speed: f32,
-    pub elapsed: f32,
-}
-
-impl PulseAnimation {
-    pub fn new(base_scale: f32, pulse_amount: f32, speed: f32) -> Self {
-        Self {
-            base_scale,
-            pulse_amount,
-            speed,
-            elapsed: 0.0,
-        }
-    }
-}
-
-/// System to animate pulsing entities
-pub fn pulse_animation_system(
-    time: Res<Time>,
-    mut query: Query<(&mut Transform, &mut PulseAnimation)>,
-) {
-    for (mut transform, mut pulse) in query.iter_mut() {
-        pulse.elapsed += time.delta_secs();
-        let scale = pulse.base_scale + (pulse.elapsed * pulse.speed).sin() * pulse.pulse_amount;
-        transform.scale = Vec3::splat(scale);
-    }
-}
-
 /// System to animate multi-step movement (hop by hop through spaces)
 pub fn animate_multi_step_movement_system(
     mut commands: Commands,
@@ -269,10 +225,11 @@ pub fn animate_multi_step_movement_system(
 /// Phase of the dice roll animation
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum DiceRollPhase {
-    Shaking,   // Die shakes rapidly
-    Settling,  // Die bounces to final position
-    Display,   // Shows result clearly
-    FadeOut,   // Fades away
+    Shaking,      // Die shakes rapidly
+    Settling,     // Die bounces to final position
+    Display,      // Shows result clearly
+    MovingToTent, // Moving to tent position
+    InTent,       // Resting in tent (final state, no despawn)
 }
 
 /// Component for animated dice roll visual
@@ -283,39 +240,40 @@ pub struct DiceRollAnimation {
     pub shake_duration: f32,
     pub settle_duration: f32,
     pub display_duration: f32,
-    pub fade_duration: f32,
+    pub move_to_tent_duration: f32,
     pub shake_intensity: f32,
     pub original_pos: Vec3,
-    pub roll_value: u8,
+    pub target_tent_pos: Vec3,  // Where to move after display phase
 }
 
 impl DiceRollAnimation {
-    pub fn new(original_pos: Vec3, roll_value: u8) -> Self {
+    pub fn new(original_pos: Vec3, target_tent_pos: Vec3) -> Self {
         Self {
             phase: DiceRollPhase::Shaking,
             elapsed: 0.0,
             shake_duration: 0.5,
             settle_duration: 0.25,
             display_duration: 0.8,
-            fade_duration: 0.3,
+            move_to_tent_duration: 0.4,
             shake_intensity: 12.0,
             original_pos,
-            roll_value,
+            target_tent_pos,
         }
     }
 
     /// Create a faster dice animation (4x speed) for initial setup
-    pub fn new_fast(original_pos: Vec3, roll_value: u8) -> Self {
+    /// Note: Initial setup dice don't go to tents, so target_tent_pos is same as original_pos
+    pub fn new_fast(original_pos: Vec3) -> Self {
         Self {
             phase: DiceRollPhase::Shaking,
             elapsed: 0.0,
             shake_duration: 0.125,
             settle_duration: 0.06,
             display_duration: 0.2,
-            fade_duration: 0.08,
+            move_to_tent_duration: 0.1,
             shake_intensity: 12.0,
             original_pos,
-            roll_value,
+            target_tent_pos: original_pos,  // Initial setup dice fade out, don't go to tent
         }
     }
 }
@@ -347,14 +305,14 @@ pub fn dice_roll_animation_system(
     mut commands: Commands,
     time: Res<Time>,
     mut query: Query<(Entity, &mut Transform, &mut Sprite, &mut DiceRollAnimation, Option<&PendingCamelMove>, Option<&PendingCrazyCamelMove>), With<DiceSprite>>,
-    children_query: Query<&Children>,
-    mut text_query: Query<&mut Transform, (With<DiceValueText>, Without<DiceSprite>)>,
+    _children_query: Query<&Children>,
+    _text_query: Query<&mut Transform, (With<DiceValueText>, Without<DiceSprite>)>,
     mut move_camel: MessageWriter<MoveCamelEvent>,
     mut move_crazy_camel: MessageWriter<MoveCrazyCamelEvent>,
 ) {
     let mut rng = rand::thread_rng();
 
-    for (entity, mut transform, mut sprite, mut anim, pending_move, pending_crazy_move) in query.iter_mut() {
+    for (entity, mut transform, sprite, mut anim, pending_move, pending_crazy_move) in query.iter_mut() {
         anim.elapsed += time.delta_secs();
 
         match anim.phase {
@@ -429,29 +387,40 @@ pub fn dice_roll_animation_system(
 
                 if anim.elapsed >= anim.display_duration {
                     anim.elapsed = 0.0;
-                    anim.phase = DiceRollPhase::FadeOut;
-                }
-            }
-            DiceRollPhase::FadeOut => {
-                let alpha = 1.0 - (anim.elapsed / anim.fade_duration).clamp(0.0, 1.0);
-                sprite.color = sprite.color.with_alpha(alpha);
-
-                // Also scale down slightly
-                let scale = 1.0 - (anim.elapsed / anim.fade_duration) * 0.3;
-                transform.scale = Vec3::splat(scale.max(0.7));
-
-                // Fade children (text) too
-                if let Ok(children) = children_query.get(entity) {
-                    for child in children.iter() {
-                        if let Ok(mut child_transform) = text_query.get_mut(child) {
-                            child_transform.scale = Vec3::splat(scale.max(0.7));
-                        }
+                    // Check if this is an initial setup dice (target == original) - fade out
+                    // Otherwise move to tent
+                    if anim.target_tent_pos == anim.original_pos {
+                        // Initial setup dice - despawn directly (fast animation)
+                        commands.entity(entity).despawn();
+                    } else {
+                        // Game dice - move to tent
+                        anim.phase = DiceRollPhase::MovingToTent;
                     }
                 }
+            }
+            DiceRollPhase::MovingToTent => {
+                let t = (anim.elapsed / anim.move_to_tent_duration).clamp(0.0, 1.0);
 
-                if anim.elapsed >= anim.fade_duration {
-                    commands.entity(entity).despawn();
+                // Ease-out cubic for smooth deceleration
+                let eased_t = 1.0 - (1.0 - t).powi(3);
+
+                // Interpolate position from original to tent
+                transform.translation = anim.original_pos.lerp(anim.target_tent_pos, eased_t);
+
+                // Shrink slightly as it moves to tent (dice in tent are smaller)
+                let scale = 1.0 - eased_t * 0.3;  // Shrink to 70% size
+                transform.scale = Vec3::splat(scale);
+
+                if t >= 1.0 {
+                    anim.elapsed = 0.0;
+                    anim.phase = DiceRollPhase::InTent;
+                    transform.translation = anim.target_tent_pos;
+                    transform.scale = Vec3::splat(0.7);  // Final tent size
                 }
+            }
+            DiceRollPhase::InTent => {
+                // Dice stays in tent permanently - do nothing
+                // No despawn, no animation changes
             }
         }
     }
@@ -773,6 +742,7 @@ pub struct CrownDropAnimation {
 }
 
 impl CrownDropAnimation {
+    #[allow(dead_code)]
     pub fn new(target_entity: Entity, start_y: f32, duration: f32) -> Self {
         Self {
             target_entity,
@@ -784,7 +754,7 @@ impl CrownDropAnimation {
 }
 
 /// Spawn a crown entity with layered sprites matching the camel style
-pub fn spawn_crown(commands: &mut Commands, start_pos: Vec3, target_entity: Entity) -> Entity {
+pub fn spawn_crown(commands: &mut Commands, position: Vec3) -> Entity {
     // Crown colors
     let gold = Color::srgb(1.0, 0.84, 0.0);
     let gold_dark = Color::srgb(0.6, 0.5, 0.0);      // Border
@@ -804,10 +774,10 @@ pub fn spawn_crown(commands: &mut Commands, start_pos: Vec3, target_entity: Enti
     let point_spacing = 6.0;
     let point_y = base_height / 2.0 + point_height / 2.0;
 
+    // Spawn crown directly at final position (no animation)
     let crown_entity = commands.spawn((
         CrownMarker,
-        CrownDropAnimation::new(target_entity, start_pos.y, 1.0),
-        Transform::from_translation(start_pos),
+        Transform::from_translation(position),
         Visibility::default(),
     )).with_children(|parent| {
         // Shadow layer (offset +2, -2)
@@ -962,6 +932,123 @@ pub fn crown_drop_system(
             commands.entity(entity).remove::<CrownDropAnimation>();
             // Snap to final position
             crown_transform.translation.y = target_y;
+        }
+    }
+}
+
+// ============================================================================
+// Pyramid Shake Animation System
+// ============================================================================
+
+/// System to animate the pyramid roll button shake when clicked
+pub fn animate_pyramid_shake(
+    time: Res<Time>,
+    mut query: Query<(Entity, &mut Transform, &mut PyramidShakeAnimation), With<PyramidRollButton>>,
+    mut commands: Commands,
+) {
+    for (entity, mut transform, mut anim) in query.iter_mut() {
+        anim.elapsed += time.delta_secs();
+        let progress = (anim.elapsed / anim.duration).clamp(0.0, 1.0);
+
+        // Rotation shake with decay
+        let intensity = 0.15; // ~8.5 degrees max rotation
+        let frequency = 4.0;  // number of full oscillations
+        let decay = 1.0 - progress;  // decreases over time
+        let angle = (progress * frequency * TAU).sin() * intensity * decay;
+
+        transform.rotation = Quat::from_rotation_z(angle);
+
+        // Animation complete
+        if progress >= 1.0 {
+            transform.rotation = Quat::IDENTITY;
+            commands.entity(entity).remove::<PyramidShakeAnimation>();
+        }
+    }
+}
+
+/// System to animate the pyramid hover effect (scale up when hovered)
+pub fn animate_pyramid_hover(
+    time: Res<Time>,
+    mut pyramid_query: Query<(&mut Transform, Option<&PyramidHovered>, Option<&PyramidShakeAnimation>, &Children), With<PyramidRollButton>>,
+    mut border_query: Query<&mut Visibility, With<PyramidHoverBorder>>,
+) {
+    const HOVER_SCALE: f32 = 1.12;
+    const NORMAL_SCALE: f32 = 1.0;
+    const LERP_SPEED: f32 = 8.0;
+
+    for (mut transform, hovered, shaking, children) in pyramid_query.iter_mut() {
+        let is_hovered = hovered.is_some();
+
+        // Update border visibility for all children
+        for child in children.iter() {
+            if let Ok(mut visibility) = border_query.get_mut(child) {
+                *visibility = if is_hovered {
+                    Visibility::Visible
+                } else {
+                    Visibility::Hidden
+                };
+            }
+        }
+
+        // Don't modify scale while shaking (shake animation handles its own transforms)
+        if shaking.is_some() {
+            continue;
+        }
+
+        let target_scale = if is_hovered { HOVER_SCALE } else { NORMAL_SCALE };
+        let current_scale = transform.scale.x;
+
+        // Smoothly lerp to target scale
+        let new_scale = current_scale + (target_scale - current_scale) * LERP_SPEED * time.delta_secs();
+        transform.scale = Vec3::splat(new_scale);
+    }
+}
+
+// ============================================================================
+// Camera Zoom Animation System
+// ============================================================================
+
+/// Component for smooth camera zoom transitions
+#[derive(Component)]
+pub struct CameraZoomAnimation {
+    pub start_scale: f32,
+    pub target_scale: f32,
+    pub elapsed: f32,
+    pub duration: f32,
+}
+
+impl CameraZoomAnimation {
+    pub fn new(start: f32, target: f32, duration: f32) -> Self {
+        Self {
+            start_scale: start,
+            target_scale: target,
+            elapsed: 0.0,
+            duration,
+        }
+    }
+}
+
+/// System to animate camera zoom transitions with easing
+pub fn animate_camera_zoom(
+    time: Res<Time>,
+    mut query: Query<(Entity, &mut Projection, &mut CameraZoomAnimation), With<Camera2d>>,
+    mut commands: Commands,
+) {
+    for (entity, mut projection, mut anim) in query.iter_mut() {
+        anim.elapsed += time.delta_secs();
+        let progress = (anim.elapsed / anim.duration).clamp(0.0, 1.0);
+
+        // Ease-out cubic for smooth deceleration
+        let eased = 1.0 - (1.0 - progress).powi(3);
+
+        let scale = anim.start_scale + (anim.target_scale - anim.start_scale) * eased;
+
+        if let Projection::Orthographic(ref mut ortho) = *projection {
+            ortho.scale = scale;
+        }
+
+        if progress >= 1.0 {
+            commands.entity(entity).remove::<CameraZoomAnimation>();
         }
     }
 }

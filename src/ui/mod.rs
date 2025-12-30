@@ -6,3 +6,5 @@ pub mod pyramid;
 pub mod scoring;
 pub mod player_setup;
 pub mod characters;
+pub mod rules;
+pub mod theme;

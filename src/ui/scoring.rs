@@ -1,13 +1,13 @@
 use bevy::prelude::*;
 use bevy_egui::{egui, EguiContexts};
 use rand::Rng;
-use crate::components::{Players, PlacedDesertTiles, DesertTile, CamelColor, Camel, BoardPosition, RaceBets};
+use crate::components::{Players, CamelColor, Camel, BoardPosition, RaceBets};
 use crate::game::state::GameState;
 use crate::systems::movement::{get_leading_camel, get_second_place_camel, get_last_place_camel};
 use crate::systems::turn::{PlayerLegBetsStore, PlayerPyramidTokens};
 use crate::systems::animation::{spawn_firework, random_firework_color};
 use crate::ui::characters::{draw_avatar, draw_avatar_with_expression};
-use crate::ui::hud::{camel_color_to_egui, draw_camel_silhouette, draw_mini_leg_bet_card};
+use crate::ui::hud::{camel_color_to_egui, draw_camel_silhouette, draw_crown_overlay, draw_dunce_cap_overlay, draw_mini_leg_bet_card};
 
 /// Player colors for visual distinction (same as in hud.rs)
 const PLAYER_COLORS: [egui::Color32; 8] = [
@@ -20,6 +20,11 @@ const PLAYER_COLORS: [egui::Color32; 8] = [
     egui::Color32::from_rgb(80, 200, 200),  // Cyan
     egui::Color32::from_rgb(200, 100, 150), // Pink
 ];
+
+/// Easing function for smooth panel animations
+fn ease_out_cubic(t: f32) -> f32 {
+    1.0 - (1.0 - t).powi(3)
+}
 
 /// Phase of the game end sequence
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -41,7 +46,6 @@ pub struct PendingBetReveal {
     pub camel: CamelColor,
     pub is_correct: bool,
     pub payout: i32,          // Positive for correct, -1 for wrong
-    pub bet_order: usize,     // Position in the reveal sequence (for payout calculation)
 }
 
 /// State for the game end sequence
@@ -54,10 +58,14 @@ pub struct GameEndState {
     pub current_reveal_index: usize,
     pub reveal_timer: f32,
     pub reveal_animation_duration: f32,
+    pub coin_update_delay: f32,  // Delay after flip before updating coins
+    pub current_payout_applied: bool,  // Track if current card's payout has been applied
     pub winning_camel: Option<CamelColor>,
     pub losing_camel: Option<CamelColor>,
     // Track scores before long-term bets are applied
     pub scores_before_long_term: Vec<(String, i32, crate::ui::characters::CharacterId, u8)>, // (name, money, character_id, player_id)
+    // Animation progress for mobile panels (0.0 = hidden, 1.0 = fully visible)
+    pub panel_animation_progress: f32,
 }
 
 impl GameEndState {
@@ -69,10 +77,13 @@ impl GameEndState {
             loser_bets_to_reveal: Vec::new(),
             current_reveal_index: 0,
             reveal_timer: 0.0,
-            reveal_animation_duration: 1.5, // Time per bet reveal
+            reveal_animation_duration: 0.2, // Time for card flip animation (200ms quick flip)
+            coin_update_delay: 0.4,         // Wait 400ms after flip before updating coins
+            current_payout_applied: false,
             winning_camel: None,
             losing_camel: None,
             scores_before_long_term: Vec::new(),
+            panel_animation_progress: 0.0,
         }
     }
 }
@@ -84,103 +95,6 @@ pub struct CelebrationState {
     pub elapsed: f32,
     pub next_firework_time: f32,
     pub duration: f32,  // How long the celebration lasts
-}
-
-pub fn leg_scoring_ui(
-    mut contexts: EguiContexts,
-    players: Option<ResMut<Players>>,
-    mut next_state: ResMut<NextState<GameState>>,
-    pyramid: Option<ResMut<crate::components::Pyramid>>,
-    leg_tiles: Option<ResMut<crate::components::LegBettingTiles>>,
-    player_leg_bets: Option<ResMut<PlayerLegBetsStore>>,
-    player_pyramid_tokens: Option<ResMut<PlayerPyramidTokens>>,
-    turn_state: Option<ResMut<crate::systems::turn::TurnState>>,
-    placed_tiles: Option<ResMut<PlacedDesertTiles>>,
-    desert_tile_entities: Query<Entity, With<DesertTile>>,
-    mut commands: Commands,
-) {
-    let Some(mut players) = players else { return };
-    let Ok(ctx) = contexts.ctx_mut() else { return };
-
-    // Collect player data for display before any mutable operations
-    let mut sorted_players: Vec<_> = players.players.iter()
-        .map(|p| (p.name.clone(), p.money))
-        .collect();
-    sorted_players.sort_by(|a, b| b.1.cmp(&a.1));
-
-    let mut should_continue = false;
-
-    egui::CentralPanel::default().show(ctx, |ui| {
-        ui.vertical_centered(|ui| {
-            ui.add_space(50.0);
-            ui.heading(egui::RichText::new("Leg Complete!").size(36.0));
-            ui.add_space(30.0);
-
-            ui.heading("Current Standings");
-            ui.add_space(10.0);
-
-            for (rank, (name, money)) in sorted_players.iter().enumerate() {
-                let rank_text = match rank {
-                    0 => "1st",
-                    1 => "2nd",
-                    2 => "3rd",
-                    3 => "4th",
-                    4 => "5th",
-                    5 => "6th",
-                    6 => "7th",
-                    7 => "8th",
-                    _ => "   ",
-                };
-                ui.label(format!("{}: {} - ${}", rank_text, name, money));
-            }
-
-            ui.add_space(40.0);
-
-            if ui.button(egui::RichText::new("Continue to Next Leg").size(20.0)).clicked() {
-                should_continue = true;
-            }
-        });
-    });
-
-    if should_continue {
-        // Reset for new leg
-        if let Some(mut pyramid) = pyramid {
-            pyramid.reset();
-        }
-        if let Some(mut leg_tiles) = leg_tiles {
-            leg_tiles.reset();
-        }
-        if let Some(mut player_leg_bets) = player_leg_bets {
-            player_leg_bets.clear_all();
-        }
-        if let Some(mut player_pyramid_tokens) = player_pyramid_tokens {
-            player_pyramid_tokens.clear_all();
-        }
-        if let Some(mut turn_state) = turn_state {
-            turn_state.leg_number += 1;
-            turn_state.action_taken = false;
-            turn_state.awaiting_action = true;
-            turn_state.leg_has_started = false; // Reset for new leg
-            turn_state.turn_delay_timer = 0.0;
-        }
-
-        // Clear placed desert tiles and return them to players
-        if let Some(mut placed_tiles) = placed_tiles {
-            placed_tiles.clear();
-        }
-
-        // Return desert tiles to all players
-        for player in players.players.iter_mut() {
-            player.has_desert_tile = true;
-        }
-
-        // Despawn visual desert tile entities
-        for entity in desert_tile_entities.iter() {
-            commands.entity(entity).despawn();
-        }
-
-        next_state.set(GameState::Playing);
-    }
 }
 
 /// Initialize game end state with bet reveal data
@@ -208,7 +122,7 @@ pub fn setup_game_end_state(
     let winner_payouts = [8, 5, 3, 2, 1];
     let mut correct_winner_count = 0;
 
-    for (idx, bet) in race_bets.winner_bets.iter().enumerate() {
+    for (_idx, bet) in race_bets.winner_bets.iter().enumerate() {
         let player = players.players.iter().find(|p| p.id == bet.player_id);
         if let Some(player) = player {
             let is_correct = Some(bet.camel) == winner;
@@ -231,7 +145,6 @@ pub fn setup_game_end_state(
                 camel: bet.camel,
                 is_correct,
                 payout,
-                bet_order: idx,
             });
         }
     }
@@ -240,7 +153,7 @@ pub fn setup_game_end_state(
     let loser_payouts = [8, 5, 3, 2, 1];
     let mut correct_loser_count = 0;
 
-    for (idx, bet) in race_bets.loser_bets.iter().enumerate() {
+    for (_idx, bet) in race_bets.loser_bets.iter().enumerate() {
         let player = players.players.iter().find(|p| p.id == bet.player_id);
         if let Some(player) = player {
             let is_correct = Some(bet.camel) == loser;
@@ -263,7 +176,6 @@ pub fn setup_game_end_state(
                 camel: bet.camel,
                 is_correct,
                 payout,
-                bet_order: idx,
             });
         }
     }
@@ -282,6 +194,7 @@ pub fn game_end_ui(
     camels: Query<(&Camel, &BoardPosition)>,
     time: Res<Time>,
     mut next_state: ResMut<NextState<GameState>>,
+    ui_state: Res<crate::ui::hud::UiState>,
 ) {
     let Some(ref mut players) = players else { return };
     let Some(ref mut state) = game_end_state else { return };
@@ -326,21 +239,23 @@ pub fn game_end_ui(
         }
     }
 
+    let is_mobile = !ui_state.use_side_panels;
+
     match state.phase {
         GameEndPhase::LegComplete => {
-            draw_final_leg_complete_phase(ctx, players, &player_leg_bets, &player_pyramid_tokens, &camels, state);
+            draw_final_leg_complete_phase(ctx, players, &player_leg_bets, &player_pyramid_tokens, &camels, state, is_mobile);
         }
         GameEndPhase::StandingsPreBets => {
             draw_standings_pre_bets_phase(ctx, players, state);
         }
         GameEndPhase::RevealingWinnerBets => {
-            draw_winner_bets_reveal_phase(ctx, players, state);
+            draw_winner_bets_reveal_phase(ctx, players, state, is_mobile);
         }
         GameEndPhase::RevealingLoserBets => {
-            draw_loser_bets_reveal_phase(ctx, players, state);
+            draw_loser_bets_reveal_phase(ctx, players, state, is_mobile);
         }
         GameEndPhase::FinalResults => {
-            draw_final_results_phase(ctx, players, state, &mut next_state);
+            draw_final_results_phase(ctx, players, state, &mut next_state, is_mobile, time.delta_secs());
         }
     }
 }
@@ -353,6 +268,7 @@ fn draw_final_leg_complete_phase(
     player_pyramid_tokens: &Option<Res<PlayerPyramidTokens>>,
     camels: &Query<(&Camel, &BoardPosition)>,
     state: &mut GameEndState,
+    is_mobile: bool,
 ) {
     let first_place = get_leading_camel(camels);
     let second_place = get_second_place_camel(camels);
@@ -478,8 +394,11 @@ fn draw_final_leg_complete_phase(
                         ui.add_space(10.0);
 
                         // Show score changes
-                        ui.heading(egui::RichText::new("Leg Earnings").size(20.0));
-                        ui.add_space(10.0);
+                        // Only show heading on desktop to save vertical space on mobile
+                        if !is_mobile {
+                            ui.heading(egui::RichText::new("Leg Earnings").size(20.0));
+                            ui.add_space(10.0);
+                        }
 
                         for (name, leg_bet_total, details, pyramid_tokens) in &score_changes {
                             let has_bets = !details.is_empty();
@@ -659,14 +578,18 @@ fn draw_winner_bets_reveal_phase(
     ctx: &egui::Context,
     players: &mut ResMut<Players>,
     state: &mut GameEndState,
+    is_mobile: bool,
 ) {
     let mut should_advance = false;
+    let mut should_next_card = false;
     let current_idx = state.current_reveal_index;
     let total_bets = state.winner_bets_to_reveal.len();
 
-    // Auto-advance after animation duration
-    if state.reveal_timer >= state.reveal_animation_duration && current_idx < total_bets {
-        // Apply the current bet's payout
+    // Check animation state
+    let payout_time = state.reveal_timer >= state.reveal_animation_duration + state.coin_update_delay;
+
+    // Apply payout once after animation + delay (but don't auto-advance)
+    if payout_time && current_idx < total_bets && !state.current_payout_applied {
         let bet = &state.winner_bets_to_reveal[current_idx];
         if let Some(player) = players.players.iter_mut().find(|p| p.id == bet.player_id) {
             if bet.payout > 0 {
@@ -675,8 +598,7 @@ fn draw_winner_bets_reveal_phase(
                 player.money = (player.money - 1).max(0);
             }
         }
-        state.current_reveal_index += 1;
-        state.reveal_timer = 0.0;
+        state.current_payout_applied = true;
     }
 
     // Sort players by current money
@@ -713,6 +635,7 @@ fn draw_winner_bets_reveal_phase(
                                 );
                                 let (rect, _) = ui.allocate_exact_size(egui::vec2(30.0, 22.0), egui::Sense::hover());
                                 draw_camel_silhouette(ui.painter(), rect, color, border_color);
+                                draw_crown_overlay(ui.painter(), rect);  // Winner wears a crown
                                 ui.label(egui::RichText::new(format!("{:?}", winner)).size(14.0).strong());
                             });
                         }
@@ -730,8 +653,11 @@ fn draw_winner_bets_reveal_phase(
                         ui.add_space(10.0);
 
                         // Current standings with progress bars
-                        ui.label(egui::RichText::new("Current Standings").size(18.0).strong());
-                        ui.add_space(10.0);
+                        // Only show heading on desktop to save vertical space on mobile
+                        if !is_mobile {
+                            ui.label(egui::RichText::new("Current Standings").size(18.0).strong());
+                            ui.add_space(10.0);
+                        }
 
                         // Find max money for scaling progress bars
                         let max_money = sorted_players.iter().map(|(_, p)| p.money).max().unwrap_or(1).max(1);
@@ -756,19 +682,16 @@ fn draw_winner_bets_reveal_phase(
                                 let bar_height = 16.0;
                                 let (bar_rect, _) = ui.allocate_exact_size(egui::vec2(bar_max_width, bar_height), egui::Sense::hover());
 
-                                // Background
-                                ui.painter().rect_filled(bar_rect, 4.0, egui::Color32::from_rgb(40, 40, 40));
-
-                                // Filled portion
+                                // Filled portion (no background)
                                 let filled_rect = egui::Rect::from_min_size(
                                     bar_rect.min,
                                     egui::vec2(bar_width, bar_height)
                                 );
                                 ui.painter().rect_filled(filled_rect, 4.0, egui::Color32::from_rgb(180, 150, 50));
 
-                                // Money text on bar
+                                // Money text on filled bar
                                 ui.painter().text(
-                                    bar_rect.center(),
+                                    filled_rect.center(),
                                     egui::Align2::CENTER_CENTER,
                                     format!("${}", player.money),
                                     egui::FontId::proportional(12.0),
@@ -783,23 +706,35 @@ fn draw_winner_bets_reveal_phase(
                         // Progress indicator
                         ui.label(egui::RichText::new(format!("Bet {}/{}", (current_idx + 1).min(total_bets), total_bets)).size(12.0).color(egui::Color32::GRAY));
 
-                        // Manual advance button (or skip to next phase)
-                        if current_idx >= total_bets {
+                        // Show Next button after payout is applied for current card
+                        if current_idx < total_bets && state.current_payout_applied {
                             ui.add_space(10.0);
-                            let next_text = if !state.loser_bets_to_reveal.is_empty() {
+                            let btn_text = if current_idx + 1 < total_bets {
+                                "Next"
+                            } else if !state.loser_bets_to_reveal.is_empty() {
                                 "Continue to Loser Bets"
                             } else {
-                                "Show Final Results"
+                                "Finish Game"
                             };
-                            let button = egui::Button::new(egui::RichText::new(next_text).size(16.0))
-                                .min_size(egui::vec2(200.0, 50.0));
+                            let button = egui::Button::new(egui::RichText::new(btn_text).size(16.0))
+                                .min_size(egui::vec2(150.0, 40.0));
                             if ui.add(button).clicked() {
-                                should_advance = true;
+                                if current_idx + 1 < total_bets {
+                                    should_next_card = true;
+                                } else {
+                                    should_advance = true;
+                                }
                             }
                         }
                     });
                 });
         });
+
+    if should_next_card {
+        state.current_reveal_index += 1;
+        state.reveal_timer = 0.0;
+        state.current_payout_applied = false;
+    }
 
     if should_advance {
         if !state.loser_bets_to_reveal.is_empty() {
@@ -809,6 +744,7 @@ fn draw_winner_bets_reveal_phase(
             state.phase = GameEndPhase::FinalResults;
         }
         state.reveal_timer = 0.0;
+        state.current_payout_applied = false;
     }
 }
 
@@ -817,14 +753,18 @@ fn draw_loser_bets_reveal_phase(
     ctx: &egui::Context,
     players: &mut ResMut<Players>,
     state: &mut GameEndState,
+    is_mobile: bool,
 ) {
     let mut should_advance = false;
+    let mut should_next_card = false;
     let current_idx = state.current_reveal_index;
     let total_bets = state.loser_bets_to_reveal.len();
 
-    // Auto-advance after animation duration
-    if state.reveal_timer >= state.reveal_animation_duration && current_idx < total_bets {
-        // Apply the current bet's payout
+    // Check animation state
+    let payout_time = state.reveal_timer >= state.reveal_animation_duration + state.coin_update_delay;
+
+    // Apply payout once after animation + delay (but don't auto-advance)
+    if payout_time && current_idx < total_bets && !state.current_payout_applied {
         let bet = &state.loser_bets_to_reveal[current_idx];
         if let Some(player) = players.players.iter_mut().find(|p| p.id == bet.player_id) {
             if bet.payout > 0 {
@@ -833,8 +773,7 @@ fn draw_loser_bets_reveal_phase(
                 player.money = (player.money - 1).max(0);
             }
         }
-        state.current_reveal_index += 1;
-        state.reveal_timer = 0.0;
+        state.current_payout_applied = true;
     }
 
     // Sort players by current money
@@ -871,6 +810,7 @@ fn draw_loser_bets_reveal_phase(
                                 );
                                 let (rect, _) = ui.allocate_exact_size(egui::vec2(30.0, 22.0), egui::Sense::hover());
                                 draw_camel_silhouette(ui.painter(), rect, color, border_color);
+                                draw_dunce_cap_overlay(ui.painter(), rect);  // Loser wears a dunce cap
                                 ui.label(egui::RichText::new(format!("{:?}", loser)).size(14.0).strong());
                             });
                         }
@@ -888,8 +828,11 @@ fn draw_loser_bets_reveal_phase(
                         ui.add_space(10.0);
 
                         // Current standings with progress bars
-                        ui.label(egui::RichText::new("Current Standings").size(18.0).strong());
-                        ui.add_space(10.0);
+                        // Only show heading on desktop to save vertical space on mobile
+                        if !is_mobile {
+                            ui.label(egui::RichText::new("Current Standings").size(18.0).strong());
+                            ui.add_space(10.0);
+                        }
 
                         // Find max money for scaling progress bars
                         let max_money = sorted_players.iter().map(|(_, p)| p.money).max().unwrap_or(1).max(1);
@@ -914,19 +857,16 @@ fn draw_loser_bets_reveal_phase(
                                 let bar_height = 16.0;
                                 let (bar_rect, _) = ui.allocate_exact_size(egui::vec2(bar_max_width, bar_height), egui::Sense::hover());
 
-                                // Background
-                                ui.painter().rect_filled(bar_rect, 4.0, egui::Color32::from_rgb(40, 40, 40));
-
-                                // Filled portion
+                                // Filled portion (no background)
                                 let filled_rect = egui::Rect::from_min_size(
                                     bar_rect.min,
                                     egui::vec2(bar_width, bar_height)
                                 );
                                 ui.painter().rect_filled(filled_rect, 4.0, egui::Color32::from_rgb(180, 150, 50));
 
-                                // Money text on bar
+                                // Money text on filled bar
                                 ui.painter().text(
-                                    bar_rect.center(),
+                                    filled_rect.center(),
                                     egui::Align2::CENTER_CENTER,
                                     format!("${}", player.money),
                                     egui::FontId::proportional(12.0),
@@ -941,82 +881,249 @@ fn draw_loser_bets_reveal_phase(
                         // Progress indicator
                         ui.label(egui::RichText::new(format!("Bet {}/{}", (current_idx + 1).min(total_bets), total_bets)).size(12.0).color(egui::Color32::GRAY));
 
-                        // Manual advance button
-                        if current_idx >= total_bets {
+                        // Show Next button after payout is applied for current card
+                        if current_idx < total_bets && state.current_payout_applied {
                             ui.add_space(10.0);
-                            let button = egui::Button::new(egui::RichText::new("Show Final Results").size(16.0))
-                                .min_size(egui::vec2(200.0, 50.0));
+                            let btn_text = if current_idx + 1 < total_bets {
+                                "Next"
+                            } else {
+                                "Show Final Results"
+                            };
+                            let button = egui::Button::new(egui::RichText::new(btn_text).size(16.0))
+                                .min_size(egui::vec2(150.0, 40.0));
                             if ui.add(button).clicked() {
-                                should_advance = true;
+                                if current_idx + 1 < total_bets {
+                                    should_next_card = true;
+                                } else {
+                                    should_advance = true;
+                                }
                             }
                         }
                     });
                 });
         });
 
+    if should_next_card {
+        state.current_reveal_index += 1;
+        state.reveal_timer = 0.0;
+        state.current_payout_applied = false;
+    }
+
     if should_advance {
         state.phase = GameEndPhase::FinalResults;
         state.reveal_timer = 0.0;
+        state.current_payout_applied = false;
     }
+}
+
+/// Draw the final results using sliding panels on mobile
+/// Top panel: Final standings list
+/// Bottom panel: Winner announcement and action buttons
+fn draw_final_results_mobile_panels(
+    ctx: &egui::Context,
+    _players: &ResMut<Players>,
+    sorted_players: &[(usize, &crate::components::player::PlayerData)],
+    state: &mut GameEndState,
+    next_state: &mut ResMut<NextState<GameState>>,
+    time_delta: f32,
+) {
+    // Animate panel progress (0 to 1 over 0.3 seconds)
+    state.panel_animation_progress = (state.panel_animation_progress + time_delta / 0.3).min(1.0);
+    let progress = ease_out_cubic(state.panel_animation_progress);
+
+    let winner = sorted_players.first().map(|(idx, p)| (*idx, *p));
+
+    // Top panel: slides down from top - Final Standings
+    egui::TopBottomPanel::top("final_standings_top")
+        .frame(egui::Frame::new()
+            .fill(egui::Color32::from_rgba_unmultiplied(0, 0, 0, (230.0 * progress) as u8))
+            .inner_margin(egui::Margin::symmetric(12, 8)))
+        .show_animated(ctx, progress > 0.01, |ui| {
+            // Title
+            ui.vertical_centered(|ui| {
+                ui.heading(egui::RichText::new("Final Standings")
+                    .size(22.0)
+                    .strong()
+                    .color(egui::Color32::WHITE));
+            });
+            ui.add_space(6.0);
+
+            // Player rankings (compact horizontal layout for mobile)
+            for (rank, (player_idx, player)) in sorted_players.iter().enumerate() {
+                let player_color = PLAYER_COLORS[*player_idx % PLAYER_COLORS.len()];
+                let is_winner = rank == 0;
+
+                let rank_text = match rank {
+                    0 => "1st",
+                    1 => "2nd",
+                    2 => "3rd",
+                    3 => "4th",
+                    4 => "5th",
+                    5 => "6th",
+                    6 => "7th",
+                    7 => "8th",
+                    _ => "",
+                };
+
+                ui.horizontal(|ui| {
+                    // Rank
+                    ui.label(egui::RichText::new(rank_text).size(13.0).monospace());
+
+                    // Avatar
+                    let avatar_size = 24.0;
+                    let (rect, _) = ui.allocate_exact_size(
+                        egui::vec2(avatar_size, avatar_size),
+                        egui::Sense::hover()
+                    );
+                    draw_avatar_with_expression(ui.painter(), rect, player.character_id, Some(player_color), is_winner);
+
+                    ui.add_space(4.0);
+
+                    // Name
+                    let name_text = if is_winner {
+                        egui::RichText::new(&player.name).size(13.0).strong().color(egui::Color32::GOLD)
+                    } else {
+                        egui::RichText::new(&player.name).size(13.0)
+                    };
+                    ui.label(name_text);
+
+                    // Money (right-aligned)
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let money_color = if is_winner { egui::Color32::GOLD } else { egui::Color32::WHITE };
+                        ui.label(egui::RichText::new(format!("${}", player.money))
+                            .size(13.0)
+                            .strong()
+                            .color(money_color));
+                    });
+                });
+                ui.add_space(2.0);
+            }
+        });
+
+    // Bottom panel: slides up from bottom - Winner + Buttons
+    egui::TopBottomPanel::bottom("final_standings_bottom")
+        .frame(egui::Frame::new()
+            .fill(egui::Color32::from_rgba_unmultiplied(0, 0, 0, (230.0 * progress) as u8))
+            .inner_margin(egui::Margin::symmetric(12, 10)))
+        .show_animated(ctx, progress > 0.01, |ui| {
+            ui.vertical_centered(|ui| {
+                // Winner announcement
+                if let Some((winner_idx, winner)) = winner {
+                    let winner_color = PLAYER_COLORS[winner_idx % PLAYER_COLORS.len()];
+
+                    ui.horizontal(|ui| {
+                        // Winner avatar
+                        let avatar_size = 40.0;
+                        let (rect, _) = ui.allocate_exact_size(
+                            egui::vec2(avatar_size, avatar_size),
+                            egui::Sense::hover()
+                        );
+                        draw_avatar_with_expression(ui.painter(), rect, winner.character_id, Some(winner_color), true);
+
+                        ui.add_space(8.0);
+
+                        ui.vertical(|ui| {
+                            ui.heading(egui::RichText::new(format!("{} Wins!", winner.name))
+                                .size(20.0)
+                                .strong()
+                                .color(egui::Color32::GOLD));
+                            ui.label(egui::RichText::new(format!("with ${}", winner.money))
+                                .size(14.0)
+                                .color(egui::Color32::WHITE));
+                        });
+                    });
+                }
+
+                ui.add_space(12.0);
+
+                // Action buttons
+                ui.horizontal(|ui| {
+                    // Play Again button - gold style
+                    let play_btn = egui::Button::new(
+                        egui::RichText::new("Play Again")
+                            .size(15.0)
+                            .strong()
+                            .color(egui::Color32::BLACK)
+                    )
+                    .fill(egui::Color32::from_rgb(255, 200, 50))
+                    .stroke(egui::Stroke::new(2.0, egui::Color32::from_rgb(200, 150, 0)))
+                    .corner_radius(8.0)
+                    .min_size(egui::vec2(120.0, 42.0));
+
+                    if ui.add(play_btn).clicked() {
+                        next_state.set(GameState::MainMenu);
+                    }
+
+                    ui.add_space(12.0);
+
+                    #[cfg(not(target_arch = "wasm32"))]
+                    {
+                        // Quit button - subtle gray style
+                        let quit_btn = egui::Button::new(
+                            egui::RichText::new("Quit")
+                                .size(14.0)
+                                .color(egui::Color32::WHITE)
+                        )
+                        .fill(egui::Color32::from_rgb(60, 60, 70))
+                        .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgb(100, 100, 110)))
+                        .corner_radius(8.0)
+                        .min_size(egui::vec2(80.0, 42.0));
+
+                        if ui.add(quit_btn).clicked() {
+                            std::process::exit(0);
+                        }
+                    }
+                });
+            });
+        });
 }
 
 /// Draw the final results with winner announcement
 fn draw_final_results_phase(
     ctx: &egui::Context,
     players: &ResMut<Players>,
-    _state: &GameEndState,
+    state: &mut GameEndState,
     next_state: &mut ResMut<NextState<GameState>>,
+    is_mobile: bool,
+    time_delta: f32,
 ) {
     // Sort players by money
     let mut sorted_players: Vec<_> = players.players.iter().enumerate().collect();
     sorted_players.sort_by(|a, b| b.1.money.cmp(&a.1.money));
 
+    // Use sliding panels on mobile, modal on desktop
+    if is_mobile {
+        draw_final_results_mobile_panels(ctx, players, &sorted_players, state, next_state, time_delta);
+        return;
+    }
+
+    // Desktop: existing modal implementation
     let winner = sorted_players.first().map(|(_, p)| p);
+
+    // Responsive sizes (desktop only now)
+    let (title_size, winner_name_size, subtitle_size, body_size) = (32.0, 26.0, 18.0, 16.0);
+    let margin = 40;
+    let winner_avatar_size = 55.0;
+    let standings_avatar_size = 36.0;
 
     egui::Area::new(egui::Id::new("game_end_final"))
         .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
         .show(ctx, |ui| {
             egui::Frame::new()
-                .fill(egui::Color32::from_rgba_unmultiplied(0, 0, 0, 240))
-                .corner_radius(egui::CornerRadius::same(16))
-                .inner_margin(egui::Margin::same(50))
+                .fill(egui::Color32::from_rgba_unmultiplied(0, 0, 0, 230))
+                .corner_radius(egui::CornerRadius::same(12))
+                .inner_margin(egui::Margin::same(margin as i8))
                 .shadow(egui::epaint::Shadow {
-                    offset: [0, 8],
-                    blur: 24,
-                    spread: 4,
-                    color: egui::Color32::from_rgba_unmultiplied(0, 0, 0, 150),
+                    offset: [0, 4],
+                    blur: 16,
+                    spread: 2,
+                    color: egui::Color32::from_rgba_unmultiplied(0, 0, 0, 120),
                 })
                 .show(ui, |ui| {
                     ui.vertical_centered(|ui| {
-                        ui.heading(egui::RichText::new("GAME OVER!").size(48.0).strong().color(egui::Color32::GOLD));
-                        ui.add_space(30.0);
-
-                        // Winner announcement
-                        if let Some(winner) = winner {
-                            let winner_idx = players.players.iter().position(|p| p.id == winner.id).unwrap_or(0);
-                            let winner_color = PLAYER_COLORS[winner_idx % PLAYER_COLORS.len()];
-
-                            ui.horizontal(|ui| {
-                                // Winner avatar (large) - with happy expression!
-                                let avatar_size = 80.0;
-                                let (rect, _) = ui.allocate_exact_size(egui::vec2(avatar_size, avatar_size), egui::Sense::hover());
-                                draw_avatar_with_expression(ui.painter(), rect, winner.character_id, Some(winner_color), true);
-
-                                ui.add_space(20.0);
-
-                                ui.vertical(|ui| {
-                                    ui.heading(egui::RichText::new(format!("{} WINS!", winner.name)).size(36.0).strong().color(egui::Color32::WHITE));
-                                    ui.label(egui::RichText::new(format!("with {} Egyptian Pounds!", winner.money)).size(20.0).color(egui::Color32::GOLD));
-                                });
-                            });
-                        }
-
-                        ui.add_space(40.0);
-                        ui.separator();
-                        ui.add_space(20.0);
-
-                        ui.heading(egui::RichText::new("Final Standings").size(24.0));
-                        ui.add_space(15.0);
+                        // Title - Final Standings at top
+                        ui.heading(egui::RichText::new("Final Standings").size(title_size).strong().color(egui::Color32::WHITE));
+                        ui.add_space(if is_mobile { 12.0 } else { 20.0 });
 
                         // Final standings with avatars
                         for (rank, (player_idx, player)) in sorted_players.iter().enumerate() {
@@ -1037,44 +1144,95 @@ fn draw_final_results_phase(
 
                             ui.horizontal(|ui| {
                                 // Fixed width for rank text to align columns
-                                ui.label(egui::RichText::new(rank_text).size(16.0).monospace());
+                                ui.label(egui::RichText::new(rank_text).size(body_size).monospace());
 
-                                let avatar_size = 45.0;
-                                let (rect, _) = ui.allocate_exact_size(egui::vec2(avatar_size, avatar_size), egui::Sense::hover());
+                                let (rect, _) = ui.allocate_exact_size(egui::vec2(standings_avatar_size, standings_avatar_size), egui::Sense::hover());
                                 // Winner gets a happy expression!
                                 draw_avatar_with_expression(ui.painter(), rect, player.character_id, Some(player_color), is_winner);
 
-                                ui.add_space(10.0);
+                                ui.add_space(if is_mobile { 5.0 } else { 10.0 });
 
                                 let name_text = if is_winner {
-                                    egui::RichText::new(&player.name).size(16.0).strong().color(egui::Color32::GOLD)
+                                    egui::RichText::new(&player.name).size(body_size).strong().color(egui::Color32::GOLD)
                                 } else {
-                                    egui::RichText::new(&player.name).size(16.0)
+                                    egui::RichText::new(&player.name).size(body_size)
                                 };
                                 ui.label(name_text);
 
-                                let ai_tag = if player.is_ai { " (AI)" } else { "" };
-                                ui.label(egui::RichText::new(ai_tag).size(12.0).color(egui::Color32::GRAY));
+                                if !is_mobile {
+                                    let ai_tag = if player.is_ai { " (AI)" } else { "" };
+                                    ui.label(egui::RichText::new(ai_tag).size(12.0).color(egui::Color32::GRAY));
+                                }
 
                                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                     let money_color = if is_winner { egui::Color32::GOLD } else { egui::Color32::WHITE };
-                                    ui.label(egui::RichText::new(format!("${}", player.money)).size(16.0).strong().color(money_color));
+                                    ui.label(egui::RichText::new(format!("${}", player.money)).size(body_size).strong().color(money_color));
                                 });
                             });
-                            ui.add_space(6.0);
+                            ui.add_space(if is_mobile { 3.0 } else { 5.0 });
                         }
 
-                        ui.add_space(40.0);
+                        ui.add_space(if is_mobile { 15.0 } else { 25.0 });
+                        ui.separator();
+                        ui.add_space(if is_mobile { 15.0 } else { 20.0 });
 
+                        // Winner announcement at bottom
+                        if let Some(winner) = winner {
+                            let winner_idx = players.players.iter().position(|p| p.id == winner.id).unwrap_or(0);
+                            let winner_color = PLAYER_COLORS[winner_idx % PLAYER_COLORS.len()];
+
+                            ui.horizontal(|ui| {
+                                // Winner avatar - with happy expression!
+                                let (rect, _) = ui.allocate_exact_size(egui::vec2(winner_avatar_size, winner_avatar_size), egui::Sense::hover());
+                                draw_avatar_with_expression(ui.painter(), rect, winner.character_id, Some(winner_color), true);
+
+                                ui.add_space(if is_mobile { 8.0 } else { 15.0 });
+
+                                ui.vertical(|ui| {
+                                    ui.heading(egui::RichText::new(format!("{} Wins!", winner.name)).size(winner_name_size).strong().color(egui::Color32::GOLD));
+                                    ui.label(egui::RichText::new(format!("with ${}", winner.money)).size(subtitle_size).color(egui::Color32::WHITE));
+                                });
+                            });
+                        }
+
+                        ui.add_space(if is_mobile { 20.0 } else { 25.0 });
+
+                        // Styled buttons
                         ui.horizontal(|ui| {
-                            if ui.button(egui::RichText::new("Play Again").size(20.0)).clicked() {
+                            // Play Again button - gold style
+                            let play_btn = egui::Button::new(
+                                egui::RichText::new("Play Again")
+                                    .size(if is_mobile { 16.0 } else { 18.0 })
+                                    .strong()
+                                    .color(egui::Color32::BLACK)
+                            )
+                            .fill(egui::Color32::from_rgb(255, 200, 50))
+                            .stroke(egui::Stroke::new(2.0, egui::Color32::from_rgb(200, 150, 0)))
+                            .corner_radius(8.0)
+                            .min_size(if is_mobile { egui::vec2(130.0, 45.0) } else { egui::vec2(140.0, 42.0) });
+
+                            if ui.add(play_btn).clicked() {
                                 next_state.set(GameState::MainMenu);
                             }
 
-                            ui.add_space(20.0);
+                            ui.add_space(if is_mobile { 15.0 } else { 20.0 });
 
-                            if ui.button(egui::RichText::new("Quit").size(16.0)).clicked() {
-                                std::process::exit(0);
+                            #[cfg(not(target_arch = "wasm32"))]
+                            {
+                                // Quit button - subtle gray style
+                                let quit_btn = egui::Button::new(
+                                    egui::RichText::new("Quit")
+                                        .size(if is_mobile { 14.0 } else { 16.0 })
+                                        .color(egui::Color32::WHITE)
+                                )
+                                .fill(egui::Color32::from_rgb(60, 60, 70))
+                                .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgb(100, 100, 110)))
+                                .corner_radius(8.0)
+                                .min_size(if is_mobile { egui::vec2(90.0, 45.0) } else { egui::vec2(100.0, 42.0) });
+
+                                if ui.add(quit_btn).clicked() {
+                                    std::process::exit(0);
+                                }
                             }
                         });
                     });
@@ -1082,86 +1240,134 @@ fn draw_final_results_phase(
         });
 }
 
-/// Draw a bet reveal card with animation - card only shows camel color and avatar
-/// The payout text is displayed separately beside the card
+/// Draw a bet reveal card with flip animation
+/// Phase 1 (0-50%): Grey neutral card shrinks horizontally (flip to edge)
+/// Phase 2 (50-100%): Colored camel card grows horizontally (flip to reveal)
 fn draw_bet_reveal_card(ui: &mut egui::Ui, bet: &PendingBetReveal, progress: f32) {
-    let camel_color = camel_color_to_egui(bet.camel);
+    let card_width = 120.0;
+    let card_height = 80.0;
 
-    // Animate scale and opacity
-    let scale = 0.5 + progress.min(1.0) * 0.5;
-    let alpha = (progress * 2.0).min(1.0);
+    // Card flip animation using horizontal scale
+    // 0.0-0.5: grey card shrinks (scale 1.0 -> 0.0)
+    // 0.5-1.0: colored card grows (scale 0.0 -> 1.0)
+    let (is_front, scale_x) = if progress < 0.5 {
+        (false, 1.0 - progress * 2.0)  // Back of card shrinking
+    } else {
+        (true, (progress - 0.5) * 2.0)  // Front of card growing
+    };
+
+    let scaled_width = card_width * scale_x.max(0.02);  // Avoid zero width
 
     ui.horizontal(|ui| {
-        // Card part
-        let card_width = 120.0 * scale;
-        let card_height = 80.0 * scale;
+        // Allocate full card space for consistent layout
+        let (allocated_rect, _) = ui.allocate_exact_size(egui::vec2(card_width, card_height), egui::Sense::hover());
 
-        let (rect, _) = ui.allocate_exact_size(egui::vec2(card_width, card_height), egui::Sense::hover());
-
-        // Card background with camel color
-        let bg_alpha = (alpha * 255.0) as u8;
-        let bg_color = egui::Color32::from_rgba_unmultiplied(
-            camel_color.r(),
-            camel_color.g(),
-            camel_color.b(),
-            bg_alpha,
+        // Center the scaled card within allocated space
+        let display_rect = egui::Rect::from_center_size(
+            allocated_rect.center(),
+            egui::vec2(scaled_width, card_height)
         );
-        ui.painter().rect_filled(rect, 8.0 * scale, bg_color);
 
-        // Border
-        let border_color = if bet.is_correct {
-            egui::Color32::from_rgba_unmultiplied(100, 255, 100, bg_alpha)
+        if is_front {
+            // Revealed card - camel color with player avatar
+            draw_revealed_bet_card(ui.painter(), display_rect, bet, scale_x);
         } else {
-            egui::Color32::from_rgba_unmultiplied(255, 100, 100, bg_alpha)
-        };
-        ui.painter().rect_stroke(rect, 8.0 * scale, egui::Stroke::new(3.0 * scale, border_color), egui::epaint::StrokeKind::Outside);
-
-        // Avatar centered on card
-        let avatar_size = 50.0 * scale;
-        let avatar_rect = egui::Rect::from_min_size(
-            rect.min + egui::vec2((card_width - avatar_size) / 2.0, (card_height - avatar_size) / 2.0),
-            egui::vec2(avatar_size, avatar_size),
-        );
-        draw_avatar(ui.painter(), avatar_rect, bet.player_character_id, None);
-
-        // Correct/Wrong indicator on card
-        let text_alpha = (alpha * 255.0) as u8;
-        let indicator = if bet.is_correct { "✓" } else { "✗" };
-        let indicator_color = if bet.is_correct {
-            egui::Color32::from_rgba_unmultiplied(100, 255, 100, text_alpha)
-        } else {
-            egui::Color32::from_rgba_unmultiplied(255, 100, 100, text_alpha)
-        };
-        ui.painter().text(
-            egui::pos2(rect.max.x - 12.0 * scale, rect.min.y + 12.0 * scale),
-            egui::Align2::CENTER_CENTER,
-            indicator,
-            egui::FontId::proportional(16.0 * scale),
-            indicator_color,
-        );
+            // Grey neutral card back
+            draw_card_back(ui.painter(), display_rect, scale_x);
+        }
 
         ui.add_space(15.0);
 
-        // Payout text beside the card: "Player Name: +$8"
-        let result_text = if bet.is_correct {
-            format!("{}: +${}", bet.player_name, bet.payout)
-        } else {
-            format!("{}: -$1", bet.player_name)
-        };
-        let result_color = if bet.is_correct {
-            egui::Color32::from_rgba_unmultiplied(100, 255, 100, text_alpha)
-        } else {
-            egui::Color32::from_rgba_unmultiplied(255, 100, 100, text_alpha)
-        };
+        // Payout text beside the card (only show after flip completes)
+        if is_front && scale_x > 0.5 {
+            let text_alpha = ((scale_x - 0.5) * 2.0 * 255.0) as u8;  // Fade in as card expands
+            let result_text = if bet.is_correct {
+                format!("{}: +${}", bet.player_name, bet.payout)
+            } else {
+                format!("{}: -$1", bet.player_name)
+            };
+            let result_color = if bet.is_correct {
+                egui::Color32::from_rgba_unmultiplied(100, 255, 100, text_alpha)
+            } else {
+                egui::Color32::from_rgba_unmultiplied(255, 100, 100, text_alpha)
+            };
 
-        ui.vertical(|ui| {
-            ui.add_space(card_height / 2.0 - 12.0);
-            ui.label(egui::RichText::new(&result_text)
-                .size(20.0 * scale)
-                .strong()
-                .color(result_color));
-        });
+            ui.vertical(|ui| {
+                ui.add_space(card_height / 2.0 - 12.0);
+                ui.label(egui::RichText::new(&result_text)
+                    .size(20.0)
+                    .strong()
+                    .color(result_color));
+            });
+        }
     });
+}
+
+/// Draw the grey neutral card back (for flip animation)
+fn draw_card_back(painter: &egui::Painter, rect: egui::Rect, scale_x: f32) {
+    // Grey card background
+    let bg_color = egui::Color32::from_rgb(100, 100, 110);
+    let border_color = egui::Color32::from_rgb(70, 70, 80);
+
+    painter.rect_filled(rect, 8.0, bg_color);
+    painter.rect_stroke(rect, 8.0, egui::Stroke::new(2.0, border_color), egui::epaint::StrokeKind::Outside);
+
+    // Question mark in center (scale with card width)
+    if scale_x > 0.3 {
+        let text_alpha = ((scale_x - 0.3) / 0.7 * 255.0) as u8;
+        painter.text(
+            rect.center(),
+            egui::Align2::CENTER_CENTER,
+            "?",
+            egui::FontId::proportional(30.0),
+            egui::Color32::from_rgba_unmultiplied(150, 150, 160, text_alpha),
+        );
+    }
+}
+
+/// Draw the revealed bet card with camel color and player avatar
+fn draw_revealed_bet_card(painter: &egui::Painter, rect: egui::Rect, bet: &PendingBetReveal, scale_x: f32) {
+    let camel_color = camel_color_to_egui(bet.camel);
+
+    // Card background with camel color
+    painter.rect_filled(rect, 8.0, camel_color);
+
+    // Border - green for correct, red for wrong
+    let border_color = if bet.is_correct {
+        egui::Color32::from_rgb(100, 255, 100)
+    } else {
+        egui::Color32::from_rgb(255, 100, 100)
+    };
+    painter.rect_stroke(rect, 8.0, egui::Stroke::new(3.0, border_color), egui::epaint::StrokeKind::Outside);
+
+    // Avatar centered on card (scale width with flip)
+    let avatar_size = 50.0;
+    let avatar_width = avatar_size * scale_x;
+    let avatar_rect = egui::Rect::from_center_size(
+        rect.center(),
+        egui::vec2(avatar_width, avatar_size),
+    );
+    if scale_x > 0.3 {
+        draw_avatar(painter, avatar_rect, bet.player_character_id, None);
+    }
+
+    // Correct/Wrong indicator in top-right corner (with proper inset)
+    if scale_x > 0.5 {
+        let indicator = if bet.is_correct { "✓" } else { "✗" };
+        let indicator_color = if bet.is_correct {
+            egui::Color32::from_rgb(100, 255, 100)
+        } else {
+            egui::Color32::from_rgb(255, 100, 100)
+        };
+        // Fixed inset from edge to avoid glitch
+        painter.text(
+            egui::pos2(rect.max.x - 16.0, rect.min.y + 14.0),
+            egui::Align2::CENTER_CENTER,
+            indicator,
+            egui::FontId::proportional(16.0),
+            indicator_color,
+        );
+    }
 }
 
 /// Helper to draw pyramid token icons - one icon per token collected

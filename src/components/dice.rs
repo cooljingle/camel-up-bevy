@@ -27,6 +27,7 @@ impl RegularDie {
 
 /// Represents either a regular camel die or the crazy camel die
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 pub enum PyramidDie {
     Regular(RegularDie),
     /// The single gray crazy die - when rolled, randomly picks white or black
@@ -105,19 +106,6 @@ impl Pyramid {
         self.dice.len()
     }
 
-    pub fn remaining_regular_dice_count(&self) -> usize {
-        self.dice.iter().filter(|d| matches!(d, PyramidDie::Regular(_))).count()
-    }
-
-    pub fn remaining_crazy_dice_count(&self) -> usize {
-        self.dice.iter().filter(|d| matches!(d, PyramidDie::Crazy { .. })).count()
-    }
-
-    /// Check if the crazy die has been rolled this leg
-    pub fn crazy_die_rolled(&self) -> bool {
-        self.rolled_dice.iter().any(|d| matches!(d, PyramidDie::Crazy { .. }))
-    }
-
     pub fn reset(&mut self) {
         for die in self.rolled_dice.drain(..) {
             match die {
@@ -139,27 +127,25 @@ impl Default for Pyramid {
     }
 }
 
-// For crazy camels - they share a single gray die (kept for backwards compatibility)
-#[derive(Resource)]
-pub struct CrazyCamelDie {
-    pub value: Option<u8>,
+// ============================================================================
+// Dice Tent Sprite Components
+// ============================================================================
+
+/// Marker component for a dice tent entity in the game world
+#[derive(Component)]
+#[allow(dead_code)]
+pub struct DiceTent {
+    pub index: usize,  // 0-4, which tent position
 }
 
-impl CrazyCamelDie {
-    pub fn roll(&mut self) -> u8 {
-        let mut rng = rand::thread_rng();
-        let value = rng.gen_range(1..=3);
-        self.value = Some(value);
-        value
-    }
-
-    pub fn reset(&mut self) {
-        self.value = None;
-    }
+/// Marker component for the dice sprite displayed inside a tent
+#[derive(Component)]
+#[allow(dead_code)]
+pub struct TentDiceSprite {
+    pub tent_index: usize,
 }
 
-impl Default for CrazyCamelDie {
-    fn default() -> Self {
-        Self { value: None }
-    }
-}
+/// Marker for tent child sprites (shadow, border, main, highlight layers)
+#[derive(Component)]
+pub struct TentSprite;
+

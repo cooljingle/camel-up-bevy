@@ -96,6 +96,30 @@ fn spawn_board_space(commands: &mut Commands, pos: Vec2, index: u8) {
         Transform::from_xyz(pos.x, pos.y - 35.0, 1.0),
     ));
 
+    // Spectator tile sprite (initially invisible, updated by update_spectator_tile_sprites system)
+    let tile_size = Vec2::new(35.0, 18.0);
+    commands.spawn((
+        GameEntity,
+        crate::components::board::SpectatorTileSprite { space_index: index },
+        Sprite {
+            color: Color::srgba(0.0, 0.0, 0.0, 0.0), // Start invisible
+            custom_size: Some(tile_size),
+            ..default()
+        },
+        Transform::from_xyz(pos.x, pos.y + 35.0, 4.5), // Above board, below placed tiles (z=5)
+    )).with_children(|parent| {
+        // Symbol text (initially invisible)
+        parent.spawn((
+            Text2d::new("+".to_string()),
+            TextFont {
+                font_size: 14.0,
+                ..default()
+            },
+            TextColor(Color::srgba(0.0, 0.0, 0.0, 0.0)),
+            Transform::from_xyz(0.0, 0.0, 0.1),
+        ));
+    });
+
     // Add finish line marker at space 16 (index 15)
     if index == 15 {
         spawn_finish_line(commands, pos);
@@ -448,6 +472,364 @@ fn spawn_crazy_camel(
     });
 }
 
+// ============================================================================
+// Dice Tent Spawning
+// ============================================================================
+
+/// Tent dimensions in world space
+const TENT_WIDTH: f32 = 50.0;
+const TENT_ROOF_HEIGHT: f32 = 35.0;
+const TENT_BASE_HEIGHT: f32 = 40.0;
+const TENT_SPACING: f32 = 60.0;
+const TENT_Y_POSITION: f32 = 200.0;  // Above the track
+const TENT_BASE_Z: f32 = 2.0;  // Above board spaces (0-1), below spectator tiles (4.5) and camels (10+)
+
+/// Spawn a polished dice tent with multi-layer visuals (shadow, border, main, highlight)
+fn spawn_dice_tent(commands: &mut Commands, position: Vec3, tent_index: usize) {
+    // Colors for empty tent (sandy brown)
+    let base_color = Color::srgb(0.65, 0.55, 0.40);
+    let border_color = Color::srgb(0.4, 0.3, 0.2);
+    let shadow_color = Color::srgba(0.0, 0.0, 0.0, 0.3);
+    let highlight_color = Color::srgba(1.0, 0.95, 0.85, 0.3);
+
+    // Parent tent entity
+    commands.spawn((
+        GameEntity,
+        DiceTent { index: tent_index },
+        Transform::from_translation(position),
+        Visibility::default(),
+    )).with_children(|parent| {
+        spawn_tent_layers(parent, base_color, border_color, shadow_color, highlight_color);
+    });
+}
+
+/// Spawn all visual layers for a tent
+fn spawn_tent_layers(
+    parent: &mut ChildSpawnerCommands,
+    base_color: Color,
+    border_color: Color,
+    shadow_color: Color,
+    highlight_color: Color,
+) {
+    let shadow_offset = Vec3::new(3.0, -3.0, -0.3);
+    let border_expand = 3.0;
+
+    // === BASE/SUPPORT AREA (rectangle where dice sits) ===
+    let base_size = Vec2::new(TENT_WIDTH, TENT_BASE_HEIGHT);
+    let base_y = -TENT_BASE_HEIGHT / 2.0;
+
+    // Shadow: base
+    parent.spawn((
+        TentSprite,
+        Sprite {
+            color: shadow_color,
+            custom_size: Some(base_size),
+            ..default()
+        },
+        Transform::from_translation(Vec3::new(0.0, base_y, 0.0) + shadow_offset),
+    ));
+
+    // Border: base
+    parent.spawn((
+        TentSprite,
+        Sprite {
+            color: border_color,
+            custom_size: Some(base_size + Vec2::splat(border_expand)),
+            ..default()
+        },
+        Transform::from_xyz(0.0, base_y, 0.1),
+    ));
+
+    // Main: base
+    parent.spawn((
+        TentSprite,
+        Sprite {
+            color: base_color,
+            custom_size: Some(base_size),
+            ..default()
+        },
+        Transform::from_xyz(0.0, base_y, 0.2),
+    ));
+
+    // === ROOF (triangular top made of two halves) ===
+    // We'll approximate the triangle with thin rectangles stacked
+    // This creates a stepped pyramid effect that looks good at game scale
+    let roof_base_y = 0.0;  // Bottom of roof
+    let roof_width = TENT_WIDTH + 6.0;  // Slightly wider than base
+    let num_steps = 8;
+
+    for i in 0..num_steps {
+        let progress = i as f32 / num_steps as f32;
+        let step_y = roof_base_y + (progress * TENT_ROOF_HEIGHT);
+        let step_width = roof_width * (1.0 - progress);
+        let step_height = TENT_ROOF_HEIGHT / num_steps as f32 + 1.0;  // +1 for overlap
+
+        if step_width < 4.0 {
+            continue; // Skip very thin top pieces
+        }
+
+        // Shadow for this step
+        parent.spawn((
+            TentSprite,
+            Sprite {
+                color: shadow_color,
+                custom_size: Some(Vec2::new(step_width, step_height)),
+                ..default()
+            },
+            Transform::from_translation(Vec3::new(0.0, step_y, 0.0) + shadow_offset),
+        ));
+
+        // Border for this step
+        parent.spawn((
+            TentSprite,
+            Sprite {
+                color: border_color,
+                custom_size: Some(Vec2::new(step_width + 2.0, step_height + 1.0)),
+                ..default()
+            },
+            Transform::from_xyz(0.0, step_y, 0.1),
+        ));
+
+        // Main color for this step
+        parent.spawn((
+            TentSprite,
+            Sprite {
+                color: base_color,
+                custom_size: Some(Vec2::new(step_width, step_height)),
+                ..default()
+            },
+            Transform::from_xyz(0.0, step_y, 0.2),
+        ));
+    }
+
+    // Highlight on top portion of roof
+    parent.spawn((
+        TentSprite,
+        Sprite {
+            color: highlight_color,
+            custom_size: Some(Vec2::new(12.0, 6.0)),
+            ..default()
+        },
+        Transform::from_xyz(0.0, TENT_ROOF_HEIGHT - 8.0, 0.3),
+    ));
+
+    // Side poles/supports
+    let pole_height = TENT_BASE_HEIGHT;
+    let pole_width = 4.0;
+    let pole_x_offset = TENT_WIDTH / 2.0 - 2.0;
+
+    for x_sign in [-1.0, 1.0] {
+        let pole_x = x_sign * pole_x_offset;
+
+        // Shadow
+        parent.spawn((
+            TentSprite,
+            Sprite {
+                color: shadow_color,
+                custom_size: Some(Vec2::new(pole_width, pole_height)),
+                ..default()
+            },
+            Transform::from_translation(Vec3::new(pole_x, base_y, 0.25) + shadow_offset),
+        ));
+
+        // Main pole (darker than base)
+        parent.spawn((
+            TentSprite,
+            Sprite {
+                color: border_color,
+                custom_size: Some(Vec2::new(pole_width, pole_height)),
+                ..default()
+            },
+            Transform::from_xyz(pole_x, base_y, 0.3),
+        ));
+    }
+}
+
+// ============================================================================
+// Pyramid Roll Button
+// ============================================================================
+
+const PYRAMID_Y_POSITION: f32 = -200.0;  // Below the track
+pub const PYRAMID_SIZE: f32 = 80.0;
+const PYRAMID_BASE_Z: f32 = 15.0;
+
+/// Marker for pyramid roll button child sprites
+#[derive(Component)]
+pub struct PyramidSprite;
+
+/// Spawn the pyramid roll button as a game board sprite
+fn spawn_pyramid_button(commands: &mut Commands) {
+    // Pyramid gold colors (matching the egui version)
+    let pyramid_light = Color::srgb(0.83, 0.66, 0.29);  // #D4A84B
+    let pyramid_dark = Color::srgb(0.63, 0.48, 0.19);   // #A07A30
+    let outline_color = Color::srgb(0.42, 0.29, 0.10);  // #6B4A1A
+    let shadow_color = Color::srgba(0.0, 0.0, 0.0, 0.3);
+
+    let position = Vec3::new(0.0, PYRAMID_Y_POSITION, PYRAMID_BASE_Z);
+
+    // Parent pyramid entity with clickable marker
+    commands.spawn((
+        GameEntity,
+        PyramidRollButton,
+        Transform::from_translation(position),
+        Visibility::default(),
+    )).with_children(|parent| {
+        spawn_pyramid_layers(parent, PYRAMID_SIZE, pyramid_light, pyramid_dark, outline_color, shadow_color);
+    });
+}
+
+/// Spawn the visual layers for the pyramid button
+fn spawn_pyramid_layers(
+    parent: &mut ChildSpawnerCommands,
+    size: f32,
+    light_color: Color,
+    dark_color: Color,
+    outline_color: Color,
+    shadow_color: Color,
+) {
+    // The pyramid is built from triangular-ish shapes using rectangles
+    // We'll approximate with a stepped pyramid similar to the tents
+
+    let base_width = size;
+    let height = size * 0.85;
+    let num_steps = 10;
+
+    // Hover border (initially hidden) - drawn behind the pyramid
+    // Gold color matching egui::Color32::GOLD
+    let border_color = Color::srgb(1.0, 0.84, 0.0);
+    let border_thickness = 4.0;
+    let border_width = base_width + border_thickness * 2.0;
+    let border_height = height + border_thickness * 2.0;
+
+    parent.spawn((
+        board::PyramidHoverBorder,
+        Sprite {
+            color: border_color,
+            custom_size: Some(Vec2::new(border_width, border_height)),
+            ..default()
+        },
+        Transform::from_xyz(0.0, 0.0, -0.2),  // Behind pyramid and shadow
+        Visibility::Hidden,  // Start hidden, shown on hover
+    ));
+
+    // Shadow offset
+    let shadow_offset = Vec3::new(3.0, -3.0, -0.1);
+
+    // Build pyramid from bottom to top with stepped layers
+    for i in 0..num_steps {
+        let progress = i as f32 / num_steps as f32;
+        let step_y = -height / 2.0 + (progress * height);
+        let step_width = base_width * (1.0 - progress * 0.85);  // Narrower at top
+        let step_height = height / num_steps as f32 + 1.0;  // +1 for overlap
+
+        if step_width < 6.0 {
+            continue;
+        }
+
+        // Shadow for this step
+        parent.spawn((
+            PyramidSprite,
+            Sprite {
+                color: shadow_color,
+                custom_size: Some(Vec2::new(step_width, step_height)),
+                ..default()
+            },
+            Transform::from_translation(Vec3::new(0.0, step_y, 0.0) + shadow_offset),
+        ));
+
+        // Left half (darker)
+        parent.spawn((
+            PyramidSprite,
+            Sprite {
+                color: dark_color,
+                custom_size: Some(Vec2::new(step_width / 2.0, step_height)),
+                ..default()
+            },
+            Transform::from_xyz(-step_width / 4.0, step_y, 0.1),
+        ));
+
+        // Right half (lighter)
+        parent.spawn((
+            PyramidSprite,
+            Sprite {
+                color: light_color,
+                custom_size: Some(Vec2::new(step_width / 2.0, step_height)),
+                ..default()
+            },
+            Transform::from_xyz(step_width / 4.0, step_y, 0.1),
+        ));
+
+        // Outline edge at the middle seam (subtle vertical line)
+        if i < num_steps - 2 {
+            parent.spawn((
+                PyramidSprite,
+                Sprite {
+                    color: outline_color,
+                    custom_size: Some(Vec2::new(2.0, step_height)),
+                    ..default()
+                },
+                Transform::from_xyz(0.0, step_y, 0.2),
+            ));
+        }
+    }
+
+    // Add "Roll" text above center
+    parent.spawn((
+        PyramidSprite,
+        Text2d::new("Roll"),
+        TextFont {
+            font_size: 16.0,
+            ..default()
+        },
+        TextColor(outline_color),
+        Transform::from_xyz(0.0, -4.0, 1.0),
+    ));
+
+    // Add gold coin below "Roll" text
+    spawn_gold_coin(parent, Vec3::new(0.0, -26.0, 1.0), 12.0);
+}
+
+/// Spawn a gold coin sprite with "1" inside
+fn spawn_gold_coin(parent: &mut ChildSpawnerCommands, position: Vec3, radius: f32) {
+    let coin_gold = Color::srgb(0.83, 0.66, 0.29);   // #D4A84B
+    let coin_dark = Color::srgb(0.63, 0.48, 0.19);   // #A07A30
+    let text_color = Color::srgb(0.42, 0.29, 0.10);  // #6B4A1A
+
+    // Coin outer border (darker)
+    parent.spawn((
+        PyramidSprite,
+        Sprite {
+            color: coin_dark,
+            custom_size: Some(Vec2::splat(radius * 2.0 + 4.0)),
+            ..default()
+        },
+        Transform::from_translation(position + Vec3::new(0.0, 0.0, 0.0)),
+    ));
+
+    // Coin main (gold)
+    parent.spawn((
+        PyramidSprite,
+        Sprite {
+            color: coin_gold,
+            custom_size: Some(Vec2::splat(radius * 2.0)),
+            ..default()
+        },
+        Transform::from_translation(position + Vec3::new(0.0, 0.0, 0.1)),
+    ));
+
+    // "1" text in center
+    parent.spawn((
+        PyramidSprite,
+        Text2d::new("1"),
+        TextFont {
+            font_size: 14.0,
+            ..default()
+        },
+        TextColor(text_color),
+        Transform::from_translation(position + Vec3::new(0.0, 0.0, 0.2)),
+    ));
+}
+
 /// Marker component for all game entities that should be cleaned up when leaving Playing state
 #[derive(Component)]
 pub struct GameEntity;
@@ -507,8 +889,7 @@ pub fn setup_game(
     commands.insert_resource(Pyramid::new());
     commands.insert_resource(LegBettingTiles::new());
     commands.insert_resource(RaceBets::default());
-    commands.insert_resource(CrazyCamelDie::default());
-    commands.insert_resource(PlacedDesertTiles::default());
+    commands.insert_resource(PlacedSpectatorTiles::default());
 
     // Insert turn-related resources
     commands.insert_resource(TurnState::default());
@@ -598,6 +979,20 @@ pub fn setup_game(
     // Insert the initial rolls resource for display
     commands.insert_resource(initial_rolls);
 
+    // Spawn dice tents below the track
+    let num_tents = 5;
+    let total_tent_width = (num_tents as f32 - 1.0) * TENT_SPACING;
+    let tent_start_x = -total_tent_width / 2.0;
+
+    for i in 0..num_tents {
+        let tent_x = tent_start_x + (i as f32 * TENT_SPACING);
+        let tent_pos = Vec3::new(tent_x, TENT_Y_POSITION, TENT_BASE_Z);
+        spawn_dice_tent(&mut commands, tent_pos, i);
+    }
+
+    // Spawn pyramid roll button below the track
+    spawn_pyramid_button(&mut commands);
+
     info!("Game setup complete!");
 }
 
@@ -651,7 +1046,8 @@ pub fn initial_roll_animation_system(
     let dice_in_display_or_later = dice_query.iter().next().map_or(false, |anim| {
         matches!(anim.phase, crate::systems::animation::DiceRollPhase::Settling
             | crate::systems::animation::DiceRollPhase::Display
-            | crate::systems::animation::DiceRollPhase::FadeOut)
+            | crate::systems::animation::DiceRollPhase::MovingToTent
+            | crate::systems::animation::DiceRollPhase::InTent)
     });
     let dice_finished = dice_query.is_empty();
     let camel_still_moving = !moving_camels.is_empty();
@@ -731,7 +1127,7 @@ pub fn initial_roll_animation_system(
         // Spawn the dice sprite with animation
         commands.spawn((
             crate::systems::animation::DiceSprite,
-            crate::systems::animation::DiceRollAnimation::new_fast(dice_pos, value),
+            crate::systems::animation::DiceRollAnimation::new_fast(dice_pos),
             Sprite {
                 color: dice_color,
                 custom_size: Some(Vec2::new(60.0, 60.0)),

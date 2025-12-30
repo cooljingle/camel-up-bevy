@@ -2,27 +2,35 @@ use bevy::prelude::*;
 use std::collections::HashMap;
 
 pub const TRACK_LENGTH: u8 = 16;
-pub const FINISH_LINE: u8 = 16;
 
 #[derive(Component)]
+#[allow(dead_code)]
 pub struct BoardSpace {
     pub index: u8,
 }
 
 #[derive(Component, Clone, Copy)]
-pub struct DesertTile {
+#[allow(dead_code)]
+pub struct SpectatorTile {
     pub owner_id: u8,
-    pub is_oasis: bool, // true = oasis (+1 forward, on top), false = mirage (-1 backward, underneath)
+    pub is_oasis: bool,
 }
 
-/// Resource to track all placed desert tiles on the board
+/// Component for spectator tile sprites on each board space
+/// These are always present but change visibility/color based on game state
+#[derive(Component)]
+pub struct SpectatorTileSprite {
+    pub space_index: u8,
+}
+
+/// Resource to track all placed spectator tiles on the board
 #[derive(Resource, Default)]
-pub struct PlacedDesertTiles {
+pub struct PlacedSpectatorTiles {
     /// Map of space_index -> (owner_id, is_oasis)
     pub tiles: HashMap<u8, (u8, bool)>,
 }
 
-impl PlacedDesertTiles {
+impl PlacedSpectatorTiles {
     pub fn place_tile(&mut self, space_index: u8, owner_id: u8, is_oasis: bool) {
         self.tiles.insert(space_index, (owner_id, is_oasis));
     }
@@ -53,9 +61,6 @@ impl PlacedDesertTiles {
         self.tiles.clear();
     }
 }
-
-#[derive(Component)]
-pub struct Track;
 
 #[derive(Resource)]
 pub struct GameBoard {
@@ -101,3 +106,31 @@ impl Default for GameBoard {
         Self::new()
     }
 }
+
+/// Marker component for the clickable pyramid roll button sprite
+#[derive(Component)]
+pub struct PyramidRollButton;
+
+/// Marker component for when pyramid is being hovered
+#[derive(Component)]
+pub struct PyramidHovered;
+
+/// Animation state for pyramid shake when clicked
+#[derive(Component)]
+pub struct PyramidShakeAnimation {
+    pub elapsed: f32,
+    pub duration: f32,
+}
+
+impl PyramidShakeAnimation {
+    pub fn new() -> Self {
+        Self {
+            elapsed: 0.0,
+            duration: 0.4,
+        }
+    }
+}
+
+/// Marker component for the pyramid hover border sprite
+#[derive(Component)]
+pub struct PyramidHoverBorder;

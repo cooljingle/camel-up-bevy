@@ -76,25 +76,3 @@ impl RaceBets {
         self.loser_bets.push(RaceBet { camel, player_id });
     }
 }
-
-#[derive(Component)]
-pub struct PlayerLegBets {
-    pub tiles: Vec<LegBetTile>,
-}
-
-impl Default for PlayerLegBets {
-    fn default() -> Self {
-        Self { tiles: Vec::new() }
-    }
-}
-
-#[derive(Component)]
-pub struct PyramidTokenHolder {
-    pub count: u8,
-}
-
-impl Default for PyramidTokenHolder {
-    fn default() -> Self {
-        Self { count: 0 }
-    }
-}
