@@ -1,8 +1,8 @@
-use bevy::prelude::*;
-use bevy::color::Srgba;
 use crate::components::*;
-use crate::systems::turn::{TurnState, PlayerLegBetsStore, PlayerPyramidTokens};
+use crate::systems::turn::{PlayerLegBetsStore, PlayerPyramidTokens, TurnState};
 use crate::ui::player_setup::PlayerSetupConfig;
+use bevy::color::Srgba;
+use bevy::prelude::*;
 use rand::Rng;
 
 // ============================================================================
@@ -98,27 +98,29 @@ fn spawn_board_space(commands: &mut Commands, pos: Vec2, index: u8) {
 
     // Spectator tile sprite (initially invisible, updated by update_spectator_tile_sprites system)
     let tile_size = Vec2::new(35.0, 18.0);
-    commands.spawn((
-        GameEntity,
-        crate::components::board::SpectatorTileSprite { space_index: index },
-        Sprite {
-            color: Color::srgba(0.0, 0.0, 0.0, 0.0), // Start invisible
-            custom_size: Some(tile_size),
-            ..default()
-        },
-        Transform::from_xyz(pos.x, pos.y + 35.0, 4.5), // Above board, below placed tiles (z=5)
-    )).with_children(|parent| {
-        // Symbol text (initially invisible)
-        parent.spawn((
-            Text2d::new("+".to_string()),
-            TextFont {
-                font_size: 14.0,
+    commands
+        .spawn((
+            GameEntity,
+            crate::components::board::SpectatorTileSprite { space_index: index },
+            Sprite {
+                color: Color::srgba(0.0, 0.0, 0.0, 0.0), // Start invisible
+                custom_size: Some(tile_size),
                 ..default()
             },
-            TextColor(Color::srgba(0.0, 0.0, 0.0, 0.0)),
-            Transform::from_xyz(0.0, 0.0, 0.1),
-        ));
-    });
+            Transform::from_xyz(pos.x, pos.y + 35.0, 4.5), // Above board, below placed tiles (z=5)
+        ))
+        .with_children(|parent| {
+            // Symbol text (initially invisible)
+            parent.spawn((
+                Text2d::new("+".to_string()),
+                TextFont {
+                    font_size: 14.0,
+                    ..default()
+                },
+                TextColor(Color::srgba(0.0, 0.0, 0.0, 0.0)),
+                Transform::from_xyz(0.0, 0.0, 0.1),
+            ));
+        });
 
     // Add finish line marker at space 16 (index 15)
     if index == 15 {
@@ -130,8 +132,8 @@ fn spawn_board_space(commands: &mut Commands, pos: Vec2, index: u8) {
 /// This emphasizes that camels must cross this threshold to win
 fn spawn_finish_line(commands: &mut Commands, pos: Vec2) {
     let checker_size = 8.0;
-    let rows = 8;  // Tall vertical flag
-    let cols = 3;  // Narrow width
+    let rows = 8; // Tall vertical flag
+    let cols = 3; // Narrow width
 
     // Position on the LEFT edge of space 15 (the finish threshold)
     // Camels crossing this line have finished the race
@@ -141,11 +143,7 @@ fn spawn_finish_line(commands: &mut Commands, pos: Vec2) {
     for row in 0..rows {
         for col in 0..cols {
             let is_white = (row + col) % 2 == 0;
-            let color = if is_white {
-                Color::WHITE
-            } else {
-                Color::BLACK
-            };
+            let color = if is_white { Color::WHITE } else { Color::BLACK };
             commands.spawn((
                 GameEntity,
                 Sprite {
@@ -200,7 +198,12 @@ fn spawn_finish_line(commands: &mut Commands, pos: Vec2) {
 /// - Neck (tall narrow rectangle)
 /// - Head (small oval)
 /// - Legs (4 thin rectangles)
-fn spawn_camel_shape(parent: &mut ChildSpawnerCommands, base_color: Color, border_color: Color, highlight_color: Color) {
+fn spawn_camel_shape(
+    parent: &mut ChildSpawnerCommands,
+    base_color: Color,
+    border_color: Color,
+    highlight_color: Color,
+) {
     // Camel dimensions (overall bounding box roughly 50x35)
     let body_size = Vec2::new(32.0, 18.0);
     let hump_size = Vec2::new(14.0, 12.0);
@@ -214,10 +217,10 @@ fn spawn_camel_shape(parent: &mut ChildSpawnerCommands, base_color: Color, borde
     let neck_pos = Vec2::new(16.0, 8.0);
     let head_pos = Vec2::new(22.0, 16.0);
     let leg_positions = [
-        Vec2::new(-10.0, -14.0),  // Back left
-        Vec2::new(-4.0, -14.0),   // Back right
-        Vec2::new(8.0, -14.0),    // Front left
-        Vec2::new(14.0, -14.0),   // Front right
+        Vec2::new(-10.0, -14.0), // Back left
+        Vec2::new(-4.0, -14.0),  // Back right
+        Vec2::new(8.0, -14.0),   // Front left
+        Vec2::new(14.0, -14.0),  // Front right
     ];
 
     // Shadow layer - all parts offset
@@ -481,8 +484,8 @@ const TENT_WIDTH: f32 = 50.0;
 const TENT_ROOF_HEIGHT: f32 = 35.0;
 const TENT_BASE_HEIGHT: f32 = 40.0;
 const TENT_SPACING: f32 = 60.0;
-const TENT_Y_POSITION: f32 = 200.0;  // Above the track
-const TENT_BASE_Z: f32 = 2.0;  // Above board spaces (0-1), below spectator tiles (4.5) and camels (10+)
+const TENT_Y_POSITION: f32 = 200.0; // Above the track
+const TENT_BASE_Z: f32 = 2.0; // Above board spaces (0-1), below spectator tiles (4.5) and camels (10+)
 
 /// Spawn a polished dice tent with multi-layer visuals (shadow, border, main, highlight)
 fn spawn_dice_tent(commands: &mut Commands, position: Vec3, tent_index: usize) {
@@ -493,14 +496,22 @@ fn spawn_dice_tent(commands: &mut Commands, position: Vec3, tent_index: usize) {
     let highlight_color = Color::srgba(1.0, 0.95, 0.85, 0.3);
 
     // Parent tent entity
-    commands.spawn((
-        GameEntity,
-        DiceTent { index: tent_index },
-        Transform::from_translation(position),
-        Visibility::default(),
-    )).with_children(|parent| {
-        spawn_tent_layers(parent, base_color, border_color, shadow_color, highlight_color);
-    });
+    commands
+        .spawn((
+            GameEntity,
+            DiceTent { index: tent_index },
+            Transform::from_translation(position),
+            Visibility::default(),
+        ))
+        .with_children(|parent| {
+            spawn_tent_layers(
+                parent,
+                base_color,
+                border_color,
+                shadow_color,
+                highlight_color,
+            );
+        });
 }
 
 /// Spawn all visual layers for a tent
@@ -554,15 +565,15 @@ fn spawn_tent_layers(
     // === ROOF (triangular top made of two halves) ===
     // We'll approximate the triangle with thin rectangles stacked
     // This creates a stepped pyramid effect that looks good at game scale
-    let roof_base_y = 0.0;  // Bottom of roof
-    let roof_width = TENT_WIDTH + 6.0;  // Slightly wider than base
+    let roof_base_y = 0.0; // Bottom of roof
+    let roof_width = TENT_WIDTH + 6.0; // Slightly wider than base
     let num_steps = 8;
 
     for i in 0..num_steps {
         let progress = i as f32 / num_steps as f32;
         let step_y = roof_base_y + (progress * TENT_ROOF_HEIGHT);
         let step_width = roof_width * (1.0 - progress);
-        let step_height = TENT_ROOF_HEIGHT / num_steps as f32 + 1.0;  // +1 for overlap
+        let step_height = TENT_ROOF_HEIGHT / num_steps as f32 + 1.0; // +1 for overlap
 
         if step_width < 4.0 {
             continue; // Skip very thin top pieces
@@ -649,8 +660,8 @@ fn spawn_tent_layers(
 // Pyramid Roll Button
 // ============================================================================
 
-const PYRAMID_Y_POSITION: f32 = -200.0;  // Below the track
-pub const PYRAMID_SIZE: f32 = 80.0;
+const PYRAMID_Y_POSITION: f32 = -220.0; // Below the track
+pub const PYRAMID_SIZE: f32 = 150.0;
 const PYRAMID_BASE_Z: f32 = 15.0;
 
 /// Marker for pyramid roll button child sprites
@@ -660,22 +671,31 @@ pub struct PyramidSprite;
 /// Spawn the pyramid roll button as a game board sprite
 fn spawn_pyramid_button(commands: &mut Commands) {
     // Pyramid gold colors (matching the egui version)
-    let pyramid_light = Color::srgb(0.83, 0.66, 0.29);  // #D4A84B
-    let pyramid_dark = Color::srgb(0.63, 0.48, 0.19);   // #A07A30
-    let outline_color = Color::srgb(0.42, 0.29, 0.10);  // #6B4A1A
+    let pyramid_light = Color::srgb(0.83, 0.66, 0.29); // #D4A84B
+    let pyramid_dark = Color::srgb(0.63, 0.48, 0.19); // #A07A30
+    let outline_color = Color::srgb(0.42, 0.29, 0.10); // #6B4A1A
     let shadow_color = Color::srgba(0.0, 0.0, 0.0, 0.3);
 
     let position = Vec3::new(0.0, PYRAMID_Y_POSITION, PYRAMID_BASE_Z);
 
     // Parent pyramid entity with clickable marker
-    commands.spawn((
-        GameEntity,
-        PyramidRollButton,
-        Transform::from_translation(position),
-        Visibility::default(),
-    )).with_children(|parent| {
-        spawn_pyramid_layers(parent, PYRAMID_SIZE, pyramid_light, pyramid_dark, outline_color, shadow_color);
-    });
+    commands
+        .spawn((
+            GameEntity,
+            PyramidRollButton,
+            Transform::from_translation(position),
+            Visibility::default(),
+        ))
+        .with_children(|parent| {
+            spawn_pyramid_layers(
+                parent,
+                PYRAMID_SIZE,
+                pyramid_light,
+                pyramid_dark,
+                outline_color,
+                shadow_color,
+            );
+        });
 }
 
 /// Spawn the visual layers for the pyramid button
@@ -708,8 +728,8 @@ fn spawn_pyramid_layers(
             custom_size: Some(Vec2::new(border_width, border_height)),
             ..default()
         },
-        Transform::from_xyz(0.0, 0.0, -0.2),  // Behind pyramid and shadow
-        Visibility::Hidden,  // Start hidden, shown on hover
+        Transform::from_xyz(0.0, 0.0, -0.2), // Behind pyramid and shadow
+        Visibility::Hidden,                  // Start hidden, shown on hover
     ));
 
     // Shadow offset
@@ -719,8 +739,8 @@ fn spawn_pyramid_layers(
     for i in 0..num_steps {
         let progress = i as f32 / num_steps as f32;
         let step_y = -height / 2.0 + (progress * height);
-        let step_width = base_width * (1.0 - progress * 0.85);  // Narrower at top
-        let step_height = height / num_steps as f32 + 1.0;  // +1 for overlap
+        let step_width = base_width * (1.0 - progress * 0.85); // Narrower at top
+        let step_height = height / num_steps as f32 + 1.0; // +1 for overlap
 
         if step_width < 6.0 {
             continue;
@@ -778,7 +798,7 @@ fn spawn_pyramid_layers(
         PyramidSprite,
         Text2d::new("Roll"),
         TextFont {
-            font_size: 16.0,
+            font_size: 24.0,
             ..default()
         },
         TextColor(outline_color),
@@ -791,9 +811,9 @@ fn spawn_pyramid_layers(
 
 /// Spawn a gold coin sprite with "1" inside
 fn spawn_gold_coin(parent: &mut ChildSpawnerCommands, position: Vec3, radius: f32) {
-    let coin_gold = Color::srgb(0.83, 0.66, 0.29);   // #D4A84B
-    let coin_dark = Color::srgb(0.63, 0.48, 0.19);   // #A07A30
-    let text_color = Color::srgb(0.42, 0.29, 0.10);  // #6B4A1A
+    let coin_gold = Color::srgb(0.83, 0.66, 0.29); // #D4A84B
+    let coin_dark = Color::srgb(0.63, 0.48, 0.19); // #A07A30
+    let text_color = Color::srgb(0.42, 0.29, 0.10); // #6B4A1A
 
     // Coin outer border (darker)
     parent.spawn((
@@ -820,9 +840,9 @@ fn spawn_gold_coin(parent: &mut ChildSpawnerCommands, position: Vec3, radius: f3
     // "1" text in center
     parent.spawn((
         PyramidSprite,
-        Text2d::new("1"),
+        Text2d::new("+$1"),
         TextFont {
-            font_size: 14.0,
+            font_size: 16.0,
             ..default()
         },
         TextColor(text_color),
@@ -857,7 +877,7 @@ pub struct InitialSetupRolls {
     pub current_roll_index: usize,                      // Which roll is currently animating
     pub all_complete: bool,                             // All rolls have been shown
     pub current_dice_spawned: bool,                     // Whether dice for current roll was spawned
-    pub current_camel_moving: bool,                     // Whether camel for current roll has started moving
+    pub current_camel_moving: bool, // Whether camel for current roll has started moving
 }
 
 /// Marker component for camels waiting to move onto the board during initial setup
@@ -926,10 +946,16 @@ pub fn setup_game(
         // Calculate target position on the board
         let base_pos = board.get_position(space_index);
         let stack_offset = stack_pos as f32 * 25.0; // Stack camels vertically
-        let target_pos = Vec3::new(base_pos.x, base_pos.y + stack_offset, 10.0 + stack_pos as f32);
+        let target_pos = Vec3::new(
+            base_pos.x,
+            base_pos.y + stack_offset,
+            10.0 + stack_pos as f32,
+        );
 
         // Record the roll and target position for animation
-        initial_rolls.camel_rolls.push((InitialRollCamel::Racing(color), roll_value, target_pos));
+        initial_rolls
+            .camel_rolls
+            .push((InitialRollCamel::Racing(color), roll_value, target_pos));
 
         // Spawn camels at staging position (staggered vertically so they're visible)
         let staging_pos = Vec3::new(
@@ -937,7 +963,14 @@ pub fn setup_game(
             CAMEL_STAGING_Y + (i as f32 * 35.0), // Stack them vertically at staging
             10.0 + i as f32,
         );
-        spawn_racing_camel(&mut commands, color, space_index, stack_pos, staging_pos, true);
+        spawn_racing_camel(
+            &mut commands,
+            color,
+            space_index,
+            stack_pos,
+            staging_pos,
+            true,
+        );
     }
 
     // Roll initial positions for BOTH crazy camels (spaces 14-16, i.e., indices 13-15)
@@ -962,10 +995,18 @@ pub fn setup_game(
         // Calculate target position on the board
         let base_pos = board.get_position(space_index);
         let stack_offset = stack_pos as f32 * 25.0;
-        let target_pos = Vec3::new(base_pos.x, base_pos.y + stack_offset, 10.0 + stack_pos as f32);
+        let target_pos = Vec3::new(
+            base_pos.x,
+            base_pos.y + stack_offset,
+            10.0 + stack_pos as f32,
+        );
 
         // Record the roll and target position for animation
-        initial_rolls.camel_rolls.push((InitialRollCamel::Crazy(crazy_color), roll_value, target_pos));
+        initial_rolls.camel_rolls.push((
+            InitialRollCamel::Crazy(crazy_color),
+            roll_value,
+            target_pos,
+        ));
 
         // Spawn crazy camels at staging position (on the left side, same as racing camels)
         let staging_pos = Vec3::new(
@@ -973,7 +1014,14 @@ pub fn setup_game(
             CAMEL_STAGING_Y + ((racing_camel_count + i) as f32 * 35.0),
             10.0 + i as f32,
         );
-        spawn_crazy_camel(&mut commands, crazy_color, space_index, stack_pos, staging_pos, true);
+        spawn_crazy_camel(
+            &mut commands,
+            crazy_color,
+            space_index,
+            stack_pos,
+            staging_pos,
+            true,
+        );
     }
 
     // Insert the initial rolls resource for display
@@ -1001,12 +1049,25 @@ pub fn cleanup_game(
     mut commands: Commands,
     game_entities: Query<Entity, With<GameEntity>>,
     mut ui_state: ResMut<crate::ui::hud::UiState>,
+    mut celebration_state: ResMut<crate::ui::scoring::CelebrationState>,
+    mut camera_state: ResMut<crate::CameraState>,
+    mut camel_position_anims: ResMut<crate::ui::hud::CamelPositionAnimations>,
+    mut rules_state: ResMut<crate::ui::rules::RulesState>,
 ) {
     for entity in game_entities.iter() {
         commands.entity(entity).despawn();
     }
-    // Reset UI state
+
+    // Reset all UI and game state
     *ui_state = crate::ui::hud::UiState::default();
+    *celebration_state = crate::ui::scoring::CelebrationState::default();
+    *camera_state = crate::CameraState::default();
+    *camel_position_anims = crate::ui::hud::CamelPositionAnimations::default();
+    *rules_state = crate::ui::rules::RulesState::default();
+
+    // Remove GameEndState resource (only exists after game end)
+    commands.remove_resource::<crate::ui::scoring::GameEndState>();
+
     info!("Game cleanup complete!");
 }
 
@@ -1018,10 +1079,22 @@ pub fn initial_roll_animation_system(
     mut commands: Commands,
     mut initial_rolls: Option<ResMut<InitialSetupRolls>>,
     mut ui_state: ResMut<crate::ui::hud::UiState>,
-    dice_query: Query<&crate::systems::animation::DiceRollAnimation, With<crate::systems::animation::DiceSprite>>,
+    dice_query: Query<
+        &crate::systems::animation::DiceRollAnimation,
+        With<crate::systems::animation::DiceSprite>,
+    >,
     mut racing_camel_query: Query<(Entity, &Camel, &Transform), With<PendingInitialMove>>,
-    mut crazy_camel_query: Query<(Entity, &CrazyCamel, &Transform), (With<PendingInitialMove>, Without<Camel>)>,
-    moving_camels: Query<Entity, (With<CamelSprite>, With<crate::systems::animation::MovementAnimation>)>,
+    mut crazy_camel_query: Query<
+        (Entity, &CrazyCamel, &Transform),
+        (With<PendingInitialMove>, Without<Camel>),
+    >,
+    moving_camels: Query<
+        Entity,
+        (
+            With<CamelSprite>,
+            With<crate::systems::animation::MovementAnimation>,
+        ),
+    >,
 ) {
     let Some(ref mut rolls) = initial_rolls else {
         // If no InitialSetupRolls resource, consider rolls complete
@@ -1044,10 +1117,13 @@ pub fn initial_roll_animation_system(
 
     // Check dice animation state
     let dice_in_display_or_later = dice_query.iter().next().map_or(false, |anim| {
-        matches!(anim.phase, crate::systems::animation::DiceRollPhase::Settling
-            | crate::systems::animation::DiceRollPhase::Display
-            | crate::systems::animation::DiceRollPhase::MovingToTent
-            | crate::systems::animation::DiceRollPhase::InTent)
+        matches!(
+            anim.phase,
+            crate::systems::animation::DiceRollPhase::Settling
+                | crate::systems::animation::DiceRollPhase::Display
+                | crate::systems::animation::DiceRollPhase::MovingToTent
+                | crate::systems::animation::DiceRollPhase::InTent
+        )
     });
     let dice_finished = dice_query.is_empty();
     let camel_still_moving = !moving_camels.is_empty();
@@ -1062,7 +1138,8 @@ pub fn initial_roll_animation_system(
                 for (entity, camel, transform) in racing_camel_query.iter_mut() {
                     if camel.color == color {
                         let start_pos = transform.translation;
-                        commands.entity(entity)
+                        commands
+                            .entity(entity)
                             .insert(crate::systems::animation::MovementAnimation::new(
                                 start_pos,
                                 target_pos,
@@ -1079,7 +1156,8 @@ pub fn initial_roll_animation_system(
                 for (entity, camel, transform) in crazy_camel_query.iter_mut() {
                     if camel.color == color {
                         let start_pos = transform.translation;
-                        commands.entity(entity)
+                        commands
+                            .entity(entity)
                             .insert(crate::systems::animation::MovementAnimation::new(
                                 start_pos,
                                 target_pos,
@@ -1102,7 +1180,11 @@ pub fn initial_roll_animation_system(
     }
 
     // If current roll is done, immediately advance to next (no delay for initial setup)
-    if rolls.current_dice_spawned && rolls.current_camel_moving && !camel_still_moving && dice_finished {
+    if rolls.current_dice_spawned
+        && rolls.current_camel_moving
+        && !camel_still_moving
+        && dice_finished
+    {
         rolls.current_roll_index += 1;
         rolls.current_dice_spawned = false;
         rolls.current_camel_moving = false;
@@ -1125,29 +1207,31 @@ pub fn initial_roll_animation_system(
         let dice_color = camel_type.to_bevy_color();
 
         // Spawn the dice sprite with animation
-        commands.spawn((
-            crate::systems::animation::DiceSprite,
-            crate::systems::animation::DiceRollAnimation::new_fast(dice_pos),
-            Sprite {
-                color: dice_color,
-                custom_size: Some(Vec2::new(60.0, 60.0)),
-                ..default()
-            },
-            Transform::from_translation(dice_pos),
-        )).with_children(|parent| {
-            // Spawn pips as children
-            let pip_positions = get_pip_positions(value);
-            for pip_pos in pip_positions {
-                parent.spawn((
-                    Sprite {
-                        color: Color::WHITE,
-                        custom_size: Some(Vec2::new(10.0, 10.0)),
-                        ..default()
-                    },
-                    Transform::from_translation(Vec3::new(pip_pos.x, pip_pos.y, 1.0)),
-                ));
-            }
-        });
+        commands
+            .spawn((
+                crate::systems::animation::DiceSprite,
+                crate::systems::animation::DiceRollAnimation::new_fast(dice_pos),
+                Sprite {
+                    color: dice_color,
+                    custom_size: Some(Vec2::new(60.0, 60.0)),
+                    ..default()
+                },
+                Transform::from_translation(dice_pos),
+            ))
+            .with_children(|parent| {
+                // Spawn pips as children
+                let pip_positions = get_pip_positions(value);
+                for pip_pos in pip_positions {
+                    parent.spawn((
+                        Sprite {
+                            color: Color::WHITE,
+                            custom_size: Some(Vec2::new(10.0, 10.0)),
+                            ..default()
+                        },
+                        Transform::from_translation(Vec3::new(pip_pos.x, pip_pos.y, 1.0)),
+                    ));
+                }
+            });
 
         rolls.current_dice_spawned = true;
         rolls.current_camel_moving = false;
@@ -1164,10 +1248,7 @@ fn get_pip_positions(value: u8) -> Vec<Vec2> {
     let offset = 15.0;
     match value {
         1 => vec![Vec2::ZERO],
-        2 => vec![
-            Vec2::new(-offset, offset),
-            Vec2::new(offset, -offset),
-        ],
+        2 => vec![Vec2::new(-offset, offset), Vec2::new(offset, -offset)],
         3 => vec![
             Vec2::new(-offset, offset),
             Vec2::ZERO,

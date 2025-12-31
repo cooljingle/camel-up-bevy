@@ -126,6 +126,9 @@
 
             // Consider it mobile if it has touch AND (small screen OR mobile user agent)
             window.isMobileDevice = hasTouch && (isSmallScreen || isMobileUA);
+
+            // iPhone detection - Fullscreen API is not supported on iPhone
+            window.isIPhone = /iPhone|iPod/i.test(navigator.userAgent) && !window.MSStream;
         })();
     </script>
 

@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use bevy::window::WindowMode;
+use bevy::window::{MonitorSelection, WindowMode};
 use bevy_egui::{egui, EguiContexts};
 use crate::components::{Players, Pyramid, LegBettingTiles, RaceBets, CamelColor, CrazyCamelColor, Camel, CrazyCamel, BoardPosition, PlacedSpectatorTiles, SpectatorTile, TRACK_LENGTH};
 use crate::components::dice::PyramidDie;
@@ -9,6 +9,7 @@ use crate::game::state::GameState;
 use crate::ui::characters::{draw_avatar, CharacterId};
 use crate::ui::rules::{RulesState, draw_rules_ui};
 use crate::ui::theme::{desert_button, DesertButtonStyle};
+use crate::ui::player_setup::is_iphone;
 
 /// Player colors for visual distinction
 const PLAYER_COLORS: [egui::Color32; 8] = [
@@ -215,12 +216,12 @@ pub fn draw_camel_with_dunce_cap(painter: &egui::Painter, rect: egui::Rect) {
 /// Draws just a crown overlay on top of a camel silhouette
 /// The rect should be the same rect used for draw_camel_silhouette
 pub fn draw_crown_overlay(painter: &egui::Painter, rect: egui::Rect) {
-    // Calculate crown position based on rect (on head)
+    // Calculate crown position based on rect (on head, left side of camel)
     let center = rect.center();
     let scale = (rect.width().min(rect.height()) / 30.0).min(1.0);
     let body_center = center + egui::vec2(-2.0 * scale, 2.0 * scale);
-    let neck_center = body_center + egui::vec2(8.0 * scale, -4.0 * scale);
-    let head_center = neck_center + egui::vec2(3.0 * scale, -5.0 * scale);
+    let neck_center = body_center + egui::vec2(-8.0 * scale, -4.0 * scale);
+    let head_center = neck_center + egui::vec2(-3.0 * scale, -5.0 * scale);
 
     // Crown position - on top of head
     let crown_center = head_center + egui::vec2(-1.0 * scale, -5.0 * scale);
@@ -896,11 +897,13 @@ pub struct UiState {
     pub spectator_tile_flip_anim: f32,     // Animation progress for card flip (0.0 to 1.0)
     pub spectator_tile_selected: bool,     // Whether spectator tile card is selected for placement (mobile)
     pub last_roll: Option<LastRoll>,
+    pub dice_popup_delay: f32,          // Delay before showing popup (waits for shake animation)
     pub dice_popup_timer: f32,          // Timer for dice result popup fade
     pub show_leg_scoring: bool,         // Show leg scoring modal
     pub show_rules: bool,               // Show game rules modal
     pub initial_rolls_complete: bool,   // Whether initial setup rolls have finished
     pub exit_fullscreen_requested: bool, // Request to exit fullscreen mode
+    pub enter_fullscreen_requested: bool, // Request to enter fullscreen mode
     pub use_side_panels: bool,          // Layout mode: true = side panels (landscape), false = top/bottom (portrait)
     pub game_board_rect: Option<egui::Rect>, // Measured game board area from CentralPanel
     #[allow(dead_code)]
@@ -910,6 +913,7 @@ pub struct UiState {
     pub card_flight_animation: Option<CardFlightAnimation>,  // Animation for leg bet card flying to player
     pub leg_bet_card_positions: [Option<egui::Pos2>; 5],  // Screen positions of leg bet card stacks (indexed by CamelColor)
     pub player_bet_area_pos: Option<egui::Pos2>,  // Screen position where player's bets are displayed
+    pub show_debug_overlay: bool,  // Show debug overlay with window dimensions
 }
 
 /// Animated position entry for the camel positions panel
@@ -938,11 +942,13 @@ impl Default for UiState {
             spectator_tile_flip_anim: 0.0,
             spectator_tile_selected: false,
             last_roll: None,
+            dice_popup_delay: 0.0,
             dice_popup_timer: 0.0,
             show_leg_scoring: false,
             show_rules: false,
             initial_rolls_complete: false,
             exit_fullscreen_requested: false,
+            enter_fullscreen_requested: false,
             use_side_panels: true,  // Default to side panels (landscape)
             game_board_rect: None,
             mobile_tab: MobileTab::default(),
@@ -951,6 +957,7 @@ impl Default for UiState {
             card_flight_animation: None,
             leg_bet_card_positions: [None; 5],
             player_bet_area_pos: None,
+            show_debug_overlay: false,
         }
     }
 }
@@ -1000,6 +1007,27 @@ pub fn game_hud_ui(
         ui_state.show_rules = false;
     }
     draw_rules_ui(ctx, &mut rules_state, !ui_state.use_side_panels, time.delta_secs());
+
+    // Debug overlay - show window dimensions in top left (only in debug builds)
+    #[cfg(debug_assertions)]
+    if ui_state.show_debug_overlay {
+        egui::Area::new(egui::Id::new("debug_dimensions_overlay"))
+            .fixed_pos(egui::pos2(8.0, 8.0))
+            .order(egui::Order::Foreground)
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    if let Ok(window) = windows.single() {
+                        let text = format!("{}x{}", window.width() as u32, window.height() as u32);
+                        ui.label(
+                            egui::RichText::new(text)
+                                .size(12.0)
+                                .color(egui::Color32::from_rgba_unmultiplied(255, 255, 255, 180))
+                                .background_color(egui::Color32::from_rgba_unmultiplied(0, 0, 0, 120))
+                        );
+                    }
+                });
+            });
+    }
 
     // Shared current player color (used in multiple places)
     let current_player_color = PLAYER_COLORS[players.current_player_index % PLAYER_COLORS.len()];
@@ -1108,24 +1136,49 @@ pub fn game_hud_ui(
                     }
                 }
 
-                // Show exit fullscreen button if in fullscreen mode
-                if let Ok(window) = windows.single() {
-                    if window.mode != WindowMode::Windowed {
-                        let btn_text = if !ui_state.use_side_panels { "Exit FS" } else { "Exit Fullscreen" };
+                // Show fullscreen toggle button (hidden on iPhone where Fullscreen API is unsupported)
+                if !is_iphone() {
+                    if let Ok(window) = windows.single() {
+                        let is_fullscreen = window.mode != WindowMode::Windowed;
+                        let btn_text = {
+                            if !ui_state.use_side_panels { "⛶" } else { "Fullscreen" }
+                        };
                         if desert_button(ui, btn_text, &small_style).clicked() {
-                            ui_state.exit_fullscreen_requested = true;
+                            if is_fullscreen {
+                                ui_state.exit_fullscreen_requested = true;
+                            } else {
+                                ui_state.enter_fullscreen_requested = true;
+                            }
                         }
+                    }
+                }
+
+                // Debug overlay toggle button (only in debug builds)
+                #[cfg(debug_assertions)]
+                {
+                    let debug_icon = "#";
+                    if desert_button(ui, debug_icon, &compact_style)
+                        .on_hover_text("Toggle debug overlay")
+                        .clicked()
+                    {
+                        ui_state.show_debug_overlay = !ui_state.show_debug_overlay;
                     }
                 }
             });
         });
     });
 
-    // Process fullscreen exit request
+    // Process fullscreen requests
     if ui_state.exit_fullscreen_requested {
         ui_state.exit_fullscreen_requested = false;
         if let Ok(mut window) = windows.single_mut() {
             window.mode = WindowMode::Windowed;
+        }
+    }
+    if ui_state.enter_fullscreen_requested {
+        ui_state.enter_fullscreen_requested = false;
+        if let Ok(mut window) = windows.single_mut() {
+            window.mode = WindowMode::BorderlessFullscreen(MonitorSelection::Current);
         }
     }
 
@@ -1255,7 +1308,7 @@ fn mobile_players_per_row(count: usize, available_width: f32) -> usize {
     match count {
         2 => 2,
         3 => 3.min(max_fit),
-        4 => if max_fit >= 4 { 4 } else { 2 },  // 4 or 2x2 grid
+        4 => 2,  // Always 2x2 grid for 4 players
         5 | 6 => if max_fit >= 3 { 3 } else { 2 },
         7 | 8 => if max_fit >= 4 { 4 } else if max_fit >= 3 { 3 } else { 2 },
         _ => max_fit.max(2).min(4),  // Default: fit what we can, 2-4 range
@@ -1378,9 +1431,12 @@ fn render_mobile_ui(
                 current_player_pos
             };
 
-            // Calculate card width based on available space
+            // Calculate card width based on available space (percentage-based to prevent overflow)
             let available_width = ui.available_width();
-            let card_width = (available_width / per_row as f32) - 6.0;
+            let spacing_between = 2.0;
+            let total_spacing = spacing_between * (per_row - 1) as f32;
+            let usable_width = available_width - total_spacing;
+            let card_width = (usable_width / per_row as f32).floor();
 
             // Row 1: First batch of players
             ui.horizontal(|ui| {
@@ -1610,6 +1666,11 @@ fn render_mobile_ui(
                         );
                     }
                 });
+            } else {
+                // Placeholder to maintain panel height when can_act is false
+                // This prevents camera zoom changes when action_taken becomes true
+                let card_height = 55.0;
+                ui.allocate_space(egui::vec2(1.0, card_height));
             }
 
             ui.add_space(4.0);
@@ -1849,7 +1910,7 @@ fn render_desktop_ui(
 
         ui.add_enabled_ui(can_act, |ui| {
             // Roll Pyramid button - pyramid shape with flip animation
-            let pyramid_size = egui::vec2(70.0, 70.0);
+            let pyramid_size = egui::vec2(75.0, 75.0);
             let pyramid_response = draw_pyramid_button(ui, pyramid_size, ui_state.pyramid_flip_anim);
             if pyramid_response.clicked() && ui_state.pyramid_flip_anim == 0.0 {
                 ui_state.pyramid_flip_anim = 0.01;  // Start flip animation
@@ -2630,7 +2691,8 @@ fn render_popup_windows(
     }
 
     // Dice result popup (enhanced with scale-in and better styling)
-    if ui_state.dice_popup_timer > 0.0 {
+    // Only show after delay completes (waits for dice shake animation)
+    if ui_state.dice_popup_timer > 0.0 && ui_state.dice_popup_delay <= 0.0 {
         if let Some(ref last_roll) = ui_state.last_roll {
             // Calculate animation phases
             // Use the appropriate duration based on roll type
@@ -2798,7 +2860,8 @@ pub fn update_ui_on_roll(
 ) {
     for event in events.read() {
         ui_state.last_roll = Some(LastRoll::Regular(event.color, event.value));
-        ui_state.dice_popup_timer = 2.0; // Show popup for 2 seconds
+        ui_state.dice_popup_delay = 0.5; // Wait for shake animation to complete
+        ui_state.dice_popup_timer = 2.0; // Show popup for 2 seconds after delay
         // Start die roll animation
         ui_state.die_roll_animation = Some(DieRollAnimation {
             die_color: Some(event.color),
@@ -2815,7 +2878,8 @@ pub fn update_ui_on_crazy_roll(
 ) {
     for event in events.read() {
         ui_state.last_roll = Some(LastRoll::Crazy(event.color, event.value));
-        ui_state.dice_popup_timer = 2.5; // Show popup for 2.5 seconds (longer for crazy camels)
+        ui_state.dice_popup_delay = 0.5; // Wait for shake animation to complete
+        ui_state.dice_popup_timer = 2.5; // Show popup for 2.5 seconds after delay
         // Start die roll animation (None = crazy die, gray color)
         ui_state.die_roll_animation = Some(DieRollAnimation {
             die_color: None, // Crazy die
@@ -2829,7 +2893,11 @@ pub fn update_dice_popup_timer(
     time: Res<Time>,
     mut ui_state: ResMut<UiState>,
 ) {
-    if ui_state.dice_popup_timer > 0.0 {
+    // Count down delay first (waits for dice shake animation)
+    if ui_state.dice_popup_delay > 0.0 {
+        ui_state.dice_popup_delay -= time.delta_secs();
+    } else if ui_state.dice_popup_timer > 0.0 {
+        // Only count down popup timer after delay is complete
         ui_state.dice_popup_timer -= time.delta_secs();
     }
 
@@ -3083,84 +3151,142 @@ pub fn leg_scoring_modal_ui(
                             ui.add_space(10.0);
                         }
 
+                        let is_mobile = !ui_state.use_side_panels;
+
                         for (name, leg_bet_total, details, pyramid_tokens) in &score_changes {
                             let has_bets = !details.is_empty();
                             let has_tokens = *pyramid_tokens > 0;
 
                             if has_bets || has_tokens {
-                                ui.horizontal(|ui| {
-                                    ui.label(egui::RichText::new(name).strong().size(14.0));
-                                    ui.label(":");
-                                    ui.add_space(8.0);
-
-                                    // Show leg bet cards with results
-                                    for (camel, value, change) in details {
-                                        // Draw mini leg bet card
-                                        let card_size = egui::vec2(28.0, 38.0);
-                                        let (rect, _) = ui.allocate_exact_size(card_size, egui::Sense::hover());
-                                        draw_mini_leg_bet_card(ui.painter(), rect, *camel, *value);
-
-                                        // Show change next to card
-                                        let change_text = if *change > 0 {
-                                            format!("+${}", change)
-                                        } else {
-                                            format!("-$1")
-                                        };
-                                        let change_color = if *change > 0 {
-                                            egui::Color32::LIGHT_GREEN
-                                        } else {
-                                            egui::Color32::from_rgb(255, 100, 100)
-                                        };
-                                        ui.label(egui::RichText::new(&change_text).size(12.0).color(change_color));
+                                if is_mobile {
+                                    // MOBILE LAYOUT - responsive wrapping
+                                    ui.horizontal_wrapped(|ui| {
+                                        ui.label(egui::RichText::new(name).strong().size(13.0));
+                                        ui.label(":");
                                         ui.add_space(4.0);
-                                    }
 
-                                    // Show pyramid tokens earned - one icon per token
-                                    if *pyramid_tokens > 0 {
-                                        if !details.is_empty() {
-                                            ui.add_space(8.0);
+                                        // Cards WITH individual earnings
+                                        let card_size = egui::vec2(22.0, 30.0);
+                                        for (camel, value, change) in details {
+                                            let (rect, _) = ui.allocate_exact_size(card_size, egui::Sense::hover());
+                                            draw_mini_leg_bet_card(ui.painter(), rect, *camel, *value);
+
+                                            let change_text = if *change > 0 { format!("+${}", change) } else { "-$1".to_string() };
+                                            let change_color = if *change > 0 { egui::Color32::LIGHT_GREEN } else { egui::Color32::from_rgb(255, 100, 100) };
+                                            ui.label(egui::RichText::new(&change_text).size(11.0).color(change_color));
+                                            ui.add_space(2.0);
                                         }
-                                        let token_size = 20.0;
-                                        let token_spacing = 16.0;
 
-                                        // Allocate space for all tokens
-                                        let total_width = token_size + (pyramid_tokens.saturating_sub(1) as f32 * token_spacing);
-                                        let (tokens_rect, _) = ui.allocate_exact_size(
-                                            egui::vec2(total_width, token_size),
-                                            egui::Sense::hover()
-                                        );
-
-                                        // Draw each token
-                                        for t in 0..*pyramid_tokens {
-                                            let token_center = egui::pos2(
-                                                tokens_rect.left() + token_size / 2.0 + (t as f32 * token_spacing),
-                                                tokens_rect.center().y
+                                        // Compact pyramid tokens (smaller, overlapping) with earnings
+                                        if *pyramid_tokens > 0 {
+                                            ui.add_space(4.0);
+                                            let token_size = 16.0;
+                                            let token_spacing = 12.0;
+                                            let total_width = token_size + (pyramid_tokens.saturating_sub(1) as f32 * token_spacing);
+                                            let (tokens_rect, _) = ui.allocate_exact_size(
+                                                egui::vec2(total_width, token_size),
+                                                egui::Sense::hover()
                                             );
-                                            draw_pyramid_token_icon(ui.painter(), token_center, token_size);
+                                            for t in 0..*pyramid_tokens {
+                                                let token_center = egui::pos2(
+                                                    tokens_rect.left() + token_size / 2.0 + (t as f32 * token_spacing),
+                                                    tokens_rect.center().y
+                                                );
+                                                draw_pyramid_token_icon(ui.painter(), token_center, token_size);
+                                            }
+                                            ui.label(egui::RichText::new(format!("+${}", pyramid_tokens))
+                                                .size(11.0).color(egui::Color32::GOLD));
                                         }
 
-                                        ui.label(egui::RichText::new(format!("+${}", pyramid_tokens))
-                                            .size(12.0).color(egui::Color32::GOLD));
-                                    }
+                                        // Total - wraps only if needed
+                                        let total = *leg_bet_total + (*pyramid_tokens as i32);
+                                        if total != 0 {
+                                            ui.add_space(8.0);
+                                            let (text, color) = if total > 0 {
+                                                (format!("= +${}", total), egui::Color32::LIGHT_GREEN)
+                                            } else {
+                                                (format!("= -${}", total.abs()), egui::Color32::from_rgb(255, 100, 100))
+                                            };
+                                            ui.label(egui::RichText::new(text).strong().size(13.0).color(color));
+                                        }
+                                    });
+                                    ui.add_space(4.0);
+                                } else {
+                                    // DESKTOP LAYOUT - single row with all details
+                                    ui.horizontal(|ui| {
+                                        ui.label(egui::RichText::new(name).strong().size(14.0));
+                                        ui.label(":");
+                                        ui.add_space(8.0);
 
-                                    // Show total for this leg
-                                    let total_leg_earnings = *leg_bet_total + (*pyramid_tokens as i32);
-                                    if total_leg_earnings != 0 {
-                                        ui.add_space(12.0);
-                                        let total_text = if total_leg_earnings > 0 {
-                                            format!("= +${}", total_leg_earnings)
-                                        } else {
-                                            format!("= -${}", total_leg_earnings.abs())
-                                        };
-                                        let total_color = if total_leg_earnings > 0 {
-                                            egui::Color32::LIGHT_GREEN
-                                        } else {
-                                            egui::Color32::from_rgb(255, 100, 100)
-                                        };
-                                        ui.label(egui::RichText::new(&total_text).strong().size(14.0).color(total_color));
-                                    }
-                                });
-                                ui.add_space(4.0);
+                                        // Show leg bet cards with results
+                                        for (camel, value, change) in details {
+                                            // Draw mini leg bet card
+                                            let card_size = egui::vec2(28.0, 38.0);
+                                            let (rect, _) = ui.allocate_exact_size(card_size, egui::Sense::hover());
+                                            draw_mini_leg_bet_card(ui.painter(), rect, *camel, *value);
+
+                                            // Show change next to card
+                                            let change_text = if *change > 0 {
+                                                format!("+${}", change)
+                                            } else {
+                                                format!("-$1")
+                                            };
+                                            let change_color = if *change > 0 {
+                                                egui::Color32::LIGHT_GREEN
+                                            } else {
+                                                egui::Color32::from_rgb(255, 100, 100)
+                                            };
+                                            ui.label(egui::RichText::new(&change_text).size(12.0).color(change_color));
+                                            ui.add_space(4.0);
+                                        }
+
+                                        // Show pyramid tokens earned - one icon per token
+                                        if *pyramid_tokens > 0 {
+                                            if !details.is_empty() {
+                                                ui.add_space(8.0);
+                                            }
+                                            let token_size = 20.0;
+                                            let token_spacing = 16.0;
+
+                                            // Allocate space for all tokens
+                                            let total_width = token_size + (pyramid_tokens.saturating_sub(1) as f32 * token_spacing);
+                                            let (tokens_rect, _) = ui.allocate_exact_size(
+                                                egui::vec2(total_width, token_size),
+                                                egui::Sense::hover()
+                                            );
+
+                                            // Draw each token
+                                            for t in 0..*pyramid_tokens {
+                                                let token_center = egui::pos2(
+                                                    tokens_rect.left() + token_size / 2.0 + (t as f32 * token_spacing),
+                                                    tokens_rect.center().y
+                                                );
+                                                draw_pyramid_token_icon(ui.painter(), token_center, token_size);
+                                            }
+
+                                            ui.label(egui::RichText::new(format!("+${}", pyramid_tokens))
+                                                .size(12.0).color(egui::Color32::GOLD));
+                                        }
+
+                                        // Show total for this leg
+                                        let total_leg_earnings = *leg_bet_total + (*pyramid_tokens as i32);
+                                        if total_leg_earnings != 0 {
+                                            ui.add_space(12.0);
+                                            let total_text = if total_leg_earnings > 0 {
+                                                format!("= +${}", total_leg_earnings)
+                                            } else {
+                                                format!("= -${}", total_leg_earnings.abs())
+                                            };
+                                            let total_color = if total_leg_earnings > 0 {
+                                                egui::Color32::LIGHT_GREEN
+                                            } else {
+                                                egui::Color32::from_rgb(255, 100, 100)
+                                            };
+                                            ui.label(egui::RichText::new(&total_text).strong().size(14.0).color(total_color));
+                                        }
+                                    });
+                                    ui.add_space(4.0);
+                                }
                             }
                         }
 

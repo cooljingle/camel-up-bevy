@@ -58,6 +58,7 @@ pub struct GameEndState {
     pub current_reveal_index: usize,
     pub reveal_timer: f32,
     pub reveal_animation_duration: f32,
+    pub grey_hold_duration: f32,     // Time to show grey card before flipping
     pub coin_update_delay: f32,  // Delay after flip before updating coins
     pub current_payout_applied: bool,  // Track if current card's payout has been applied
     pub winning_camel: Option<CamelColor>,
@@ -66,6 +67,8 @@ pub struct GameEndState {
     pub scores_before_long_term: Vec<(String, i32, crate::ui::characters::CharacterId, u8)>, // (name, money, character_id, player_id)
     // Animation progress for mobile panels (0.0 = hidden, 1.0 = fully visible)
     pub panel_animation_progress: f32,
+    // Animated money values for smooth progress bar updates (indexed by player_id)
+    pub animated_player_money: Vec<f32>,
 }
 
 impl GameEndState {
@@ -77,13 +80,15 @@ impl GameEndState {
             loser_bets_to_reveal: Vec::new(),
             current_reveal_index: 0,
             reveal_timer: 0.0,
-            reveal_animation_duration: 0.2, // Time for card flip animation (200ms quick flip)
+            reveal_animation_duration: 0.7, // Total time: 500ms grey hold + 200ms flip
+            grey_hold_duration: 0.5,        // Show grey card for 500ms before flipping
             coin_update_delay: 0.4,         // Wait 400ms after flip before updating coins
             current_payout_applied: false,
             winning_camel: None,
             losing_camel: None,
             scores_before_long_term: Vec::new(),
             panel_animation_progress: 0.0,
+            animated_player_money: Vec::new(),
         }
     }
 }
@@ -117,6 +122,14 @@ pub fn setup_game_end_state(
     state.scores_before_long_term = players.players.iter()
         .map(|p| (p.name.clone(), p.money, p.character_id, p.id))
         .collect();
+
+    // Initialize animated money values from current player money
+    // Use player_id as index, so we need to find the max player_id
+    let max_player_id = players.players.iter().map(|p| p.id).max().unwrap_or(0) as usize;
+    state.animated_player_money = vec![0.0; max_player_id + 1];
+    for player in &players.players {
+        state.animated_player_money[player.id as usize] = player.money as f32;
+    }
 
     // Prepare winner bets for reveal
     let winner_payouts = [8, 5, 3, 2, 1];
@@ -249,10 +262,10 @@ pub fn game_end_ui(
             draw_standings_pre_bets_phase(ctx, players, state);
         }
         GameEndPhase::RevealingWinnerBets => {
-            draw_winner_bets_reveal_phase(ctx, players, state, is_mobile);
+            draw_winner_bets_reveal_phase(ctx, players, state, is_mobile, time.delta_secs());
         }
         GameEndPhase::RevealingLoserBets => {
-            draw_loser_bets_reveal_phase(ctx, players, state, is_mobile);
+            draw_loser_bets_reveal_phase(ctx, players, state, is_mobile, time.delta_secs());
         }
         GameEndPhase::FinalResults => {
             draw_final_results_phase(ctx, players, state, &mut next_state, is_mobile, time.delta_secs());
@@ -579,6 +592,7 @@ fn draw_winner_bets_reveal_phase(
     players: &mut ResMut<Players>,
     state: &mut GameEndState,
     is_mobile: bool,
+    delta: f32,
 ) {
     let mut should_advance = false;
     let mut should_next_card = false;
@@ -599,6 +613,21 @@ fn draw_winner_bets_reveal_phase(
             }
         }
         state.current_payout_applied = true;
+    }
+
+    // Animate money values towards actual player money (lerp each frame)
+    let lerp_speed = 5.0; // Speed of animation
+    for player in players.players.iter() {
+        if (player.id as usize) < state.animated_player_money.len() {
+            let target = player.money as f32;
+            let current = state.animated_player_money[player.id as usize];
+            let diff = target - current;
+            if diff.abs() > 0.5 {
+                state.animated_player_money[player.id as usize] = current + diff * (lerp_speed * delta).min(1.0);
+            } else {
+                state.animated_player_money[player.id as usize] = target;
+            }
+        }
     }
 
     // Sort players by current money
@@ -645,7 +674,8 @@ fn draw_winner_bets_reveal_phase(
                         // Current bet being revealed (or most recently revealed)
                         if current_idx < total_bets {
                             let bet = &state.winner_bets_to_reveal[current_idx];
-                            draw_bet_reveal_card(ui, bet, state.reveal_timer / state.reveal_animation_duration);
+                            let grey_hold_ratio = state.grey_hold_duration / state.reveal_animation_duration;
+                            draw_bet_reveal_card(ui, bet, state.reveal_timer / state.reveal_animation_duration, grey_hold_ratio);
                         }
 
                         ui.add_space(20.0);
@@ -659,8 +689,9 @@ fn draw_winner_bets_reveal_phase(
                             ui.add_space(10.0);
                         }
 
-                        // Find max money for scaling progress bars
-                        let max_money = sorted_players.iter().map(|(_, p)| p.money).max().unwrap_or(1).max(1);
+                        // Find max money for scaling progress bars - use max($50, max_player_score)
+                        let actual_max = sorted_players.iter().map(|(_, p)| p.money).max().unwrap_or(1);
+                        let max_money = actual_max.max(50).max(1);
                         let bar_max_width = 150.0;
 
                         for (rank, (player_idx, player)) in sorted_players.iter().enumerate() {
@@ -677,23 +708,28 @@ fn draw_winner_bets_reveal_phase(
 
                                 ui.add_space(8.0);
 
-                                // Money progress bar
-                                let bar_width = (player.money as f32 / max_money as f32) * bar_max_width;
+                                // Money progress bar - use animated value for smooth transitions
+                                let animated_money = if (player.id as usize) < state.animated_player_money.len() {
+                                    state.animated_player_money[player.id as usize]
+                                } else {
+                                    player.money as f32
+                                };
+                                let bar_width = (animated_money / max_money as f32) * bar_max_width;
                                 let bar_height = 16.0;
                                 let (bar_rect, _) = ui.allocate_exact_size(egui::vec2(bar_max_width, bar_height), egui::Sense::hover());
 
                                 // Filled portion (no background)
                                 let filled_rect = egui::Rect::from_min_size(
                                     bar_rect.min,
-                                    egui::vec2(bar_width, bar_height)
+                                    egui::vec2(bar_width.max(0.0), bar_height)
                                 );
                                 ui.painter().rect_filled(filled_rect, 4.0, egui::Color32::from_rgb(180, 150, 50));
 
-                                // Money text on filled bar
+                                // Money text on filled bar - show animated value rounded
                                 ui.painter().text(
                                     filled_rect.center(),
                                     egui::Align2::CENTER_CENTER,
-                                    format!("${}", player.money),
+                                    format!("${}", animated_money.round() as i32),
                                     egui::FontId::proportional(12.0),
                                     egui::Color32::WHITE,
                                 );
@@ -754,6 +790,7 @@ fn draw_loser_bets_reveal_phase(
     players: &mut ResMut<Players>,
     state: &mut GameEndState,
     is_mobile: bool,
+    delta: f32,
 ) {
     let mut should_advance = false;
     let mut should_next_card = false;
@@ -774,6 +811,21 @@ fn draw_loser_bets_reveal_phase(
             }
         }
         state.current_payout_applied = true;
+    }
+
+    // Animate money values towards actual player money (lerp each frame)
+    let lerp_speed = 5.0; // Speed of animation
+    for player in players.players.iter() {
+        if (player.id as usize) < state.animated_player_money.len() {
+            let target = player.money as f32;
+            let current = state.animated_player_money[player.id as usize];
+            let diff = target - current;
+            if diff.abs() > 0.5 {
+                state.animated_player_money[player.id as usize] = current + diff * (lerp_speed * delta).min(1.0);
+            } else {
+                state.animated_player_money[player.id as usize] = target;
+            }
+        }
     }
 
     // Sort players by current money
@@ -820,7 +872,8 @@ fn draw_loser_bets_reveal_phase(
                         // Current bet being revealed
                         if current_idx < total_bets {
                             let bet = &state.loser_bets_to_reveal[current_idx];
-                            draw_bet_reveal_card(ui, bet, state.reveal_timer / state.reveal_animation_duration);
+                            let grey_hold_ratio = state.grey_hold_duration / state.reveal_animation_duration;
+                            draw_bet_reveal_card(ui, bet, state.reveal_timer / state.reveal_animation_duration, grey_hold_ratio);
                         }
 
                         ui.add_space(20.0);
@@ -834,8 +887,9 @@ fn draw_loser_bets_reveal_phase(
                             ui.add_space(10.0);
                         }
 
-                        // Find max money for scaling progress bars
-                        let max_money = sorted_players.iter().map(|(_, p)| p.money).max().unwrap_or(1).max(1);
+                        // Find max money for scaling progress bars - use max($50, max_player_score)
+                        let actual_max = sorted_players.iter().map(|(_, p)| p.money).max().unwrap_or(1);
+                        let max_money = actual_max.max(50).max(1);
                         let bar_max_width = 150.0;
 
                         for (rank, (player_idx, player)) in sorted_players.iter().enumerate() {
@@ -852,23 +906,28 @@ fn draw_loser_bets_reveal_phase(
 
                                 ui.add_space(8.0);
 
-                                // Money progress bar
-                                let bar_width = (player.money as f32 / max_money as f32) * bar_max_width;
+                                // Money progress bar - use animated value for smooth transitions
+                                let animated_money = if (player.id as usize) < state.animated_player_money.len() {
+                                    state.animated_player_money[player.id as usize]
+                                } else {
+                                    player.money as f32
+                                };
+                                let bar_width = (animated_money / max_money as f32) * bar_max_width;
                                 let bar_height = 16.0;
                                 let (bar_rect, _) = ui.allocate_exact_size(egui::vec2(bar_max_width, bar_height), egui::Sense::hover());
 
                                 // Filled portion (no background)
                                 let filled_rect = egui::Rect::from_min_size(
                                     bar_rect.min,
-                                    egui::vec2(bar_width, bar_height)
+                                    egui::vec2(bar_width.max(0.0), bar_height)
                                 );
                                 ui.painter().rect_filled(filled_rect, 4.0, egui::Color32::from_rgb(180, 150, 50));
 
-                                // Money text on filled bar
+                                // Money text on filled bar - show animated value rounded
                                 ui.painter().text(
                                     filled_rect.center(),
                                     egui::Align2::CENTER_CENTER,
-                                    format!("${}", player.money),
+                                    format!("${}", animated_money.round() as i32),
                                     egui::FontId::proportional(12.0),
                                     egui::Color32::WHITE,
                                 );
@@ -1241,19 +1300,26 @@ fn draw_final_results_phase(
 }
 
 /// Draw a bet reveal card with flip animation
-/// Phase 1 (0-50%): Grey neutral card shrinks horizontally (flip to edge)
-/// Phase 2 (50-100%): Colored camel card grows horizontally (flip to reveal)
-fn draw_bet_reveal_card(ui: &mut egui::Ui, bet: &PendingBetReveal, progress: f32) {
-    let card_width = 120.0;
-    let card_height = 80.0;
+/// Phase 1 (0 to grey_hold_ratio): Grey neutral card at full size
+/// Phase 2 (grey_hold_ratio to 1.0): Flip animation (grey shrinks, color grows)
+fn draw_bet_reveal_card(ui: &mut egui::Ui, bet: &PendingBetReveal, progress: f32, grey_hold_ratio: f32) {
+    let card_width = 70.0;   // Match race bet card picker dimensions
+    let card_height = 90.0;
 
     // Card flip animation using horizontal scale
-    // 0.0-0.5: grey card shrinks (scale 1.0 -> 0.0)
-    // 0.5-1.0: colored card grows (scale 0.0 -> 1.0)
-    let (is_front, scale_x) = if progress < 0.5 {
-        (false, 1.0 - progress * 2.0)  // Back of card shrinking
+    // 0.0 to grey_hold_ratio: grey card at full scale (hold phase)
+    // grey_hold_ratio to 1.0: flip animation
+    let (is_front, scale_x) = if progress < grey_hold_ratio {
+        // Hold phase - show grey card at full size
+        (false, 1.0)
     } else {
-        (true, (progress - 0.5) * 2.0)  // Front of card growing
+        // Flip phase - normalize progress for the flip portion
+        let flip_progress = (progress - grey_hold_ratio) / (1.0 - grey_hold_ratio);
+        if flip_progress < 0.5 {
+            (false, 1.0 - flip_progress * 2.0)  // Back of card shrinking
+        } else {
+            (true, (flip_progress - 0.5) * 2.0)  // Front of card growing
+        }
     };
 
     let scaled_width = card_width * scale_x.max(0.02);  // Avoid zero width
@@ -1332,13 +1398,9 @@ fn draw_revealed_bet_card(painter: &egui::Painter, rect: egui::Rect, bet: &Pendi
     // Card background with camel color
     painter.rect_filled(rect, 8.0, camel_color);
 
-    // Border - green for correct, red for wrong
-    let border_color = if bet.is_correct {
-        egui::Color32::from_rgb(100, 255, 100)
-    } else {
-        egui::Color32::from_rgb(255, 100, 100)
-    };
-    painter.rect_stroke(rect, 8.0, egui::Stroke::new(3.0, border_color), egui::epaint::StrokeKind::Outside);
+    // Simple dark border (no green/red - payout text shows result)
+    let border_color = egui::Color32::from_rgb(40, 40, 50);
+    painter.rect_stroke(rect, 8.0, egui::Stroke::new(2.0, border_color), egui::epaint::StrokeKind::Outside);
 
     // Avatar centered on card (scale width with flip)
     let avatar_size = 50.0;
@@ -1361,10 +1423,10 @@ fn draw_revealed_bet_card(painter: &egui::Painter, rect: egui::Rect, bet: &Pendi
         };
         // Fixed inset from edge to avoid glitch
         painter.text(
-            egui::pos2(rect.max.x - 16.0, rect.min.y + 14.0),
+            egui::pos2(rect.max.x - 12.0, rect.min.y + 12.0),
             egui::Align2::CENTER_CENTER,
             indicator,
-            egui::FontId::proportional(16.0),
+            egui::FontId::proportional(14.0),
             indicator_color,
         );
     }

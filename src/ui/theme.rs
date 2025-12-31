@@ -83,7 +83,7 @@ impl DesertButtonStyle {
 
     pub fn small() -> Self {
         Self {
-            min_size: egui::vec2(80.0, 32.0),
+            min_size: egui::vec2(80.0, 22.0),
             corner_radius: 4.0,
             font_size: 14.0,
         }
@@ -91,9 +91,9 @@ impl DesertButtonStyle {
 
     pub fn compact() -> Self {
         Self {
-            min_size: egui::vec2(36.0, 36.0),
+            min_size: egui::vec2(22.0, 22.0),
             corner_radius: 4.0,
-            font_size: 18.0,
+            font_size: 14.0,
         }
     }
 }

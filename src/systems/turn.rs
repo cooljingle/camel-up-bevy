@@ -191,6 +191,7 @@ pub fn handle_pyramid_roll_action(
     mut player_pyramid_tokens: ResMut<PlayerPyramidTokens>,
     mut roll_result: MessageWriter<PyramidRollResult>,
     mut crazy_roll_result: MessageWriter<CrazyCamelRollResult>,
+    pyramid_button: Query<Entity, With<PyramidRollButton>>,
 ) {
     for _ in events.read() {
         if turn_state.action_taken {
@@ -201,6 +202,10 @@ pub fn handle_pyramid_roll_action(
         let tent_index = pyramid.rolled_dice.len();
 
         if let Some(die_result) = pyramid.roll_random_die() {
+            // Trigger pyramid shake animation (works for both human and AI rolls)
+            if let Ok(pyramid_entity) = pyramid_button.single() {
+                commands.entity(pyramid_entity).insert(PyramidShakeAnimation::new());
+            }
             let player_id = players.current_player_index;
 
             // Player earns 1 coin for rolling
@@ -291,7 +296,6 @@ pub fn handle_pyramid_roll_action(
 /// Constants for tent layout (must match setup.rs)
 const TENT_SPACING: f32 = 60.0;
 const TENT_Y_POSITION: f32 = 200.0;
-const TENT_BASE_Z: f32 = 5.0;
 
 /// Calculate world position for dice in a tent
 fn get_tent_world_position(tent_index: usize) -> Vec3 {
@@ -300,7 +304,8 @@ fn get_tent_world_position(tent_index: usize) -> Vec3 {
     let start_x = -total_width / 2.0;
     let tent_x = start_x + (tent_index as f32 * TENT_SPACING);
     // Position dice slightly lower in tent base area
-    Vec3::new(tent_x, TENT_Y_POSITION - 15.0, TENT_BASE_Z + 10.0)
+    // Z = 5.0 so dice render behind camels (which are at Z = 10-14)
+    Vec3::new(tent_x, TENT_Y_POSITION - 15.0, 5.0)
 }
 
 /// Get pip positions for dice display (like a real die)
@@ -761,12 +766,11 @@ pub fn handle_spectator_tile_clicks(
 pub fn handle_pyramid_click(
     windows: Query<&Window>,
     camera_query: Query<(&Camera, &GlobalTransform), With<Camera2d>>,
-    pyramid_query: Query<(Entity, &GlobalTransform), With<PyramidRollButton>>,
+    pyramid_query: Query<&GlobalTransform, With<PyramidRollButton>>,
     mouse_input: Res<ButtonInput<MouseButton>>,
     touches: Res<Touches>,
     ui_state: Res<UiState>,
     mut roll_action: MessageWriter<RollPyramidAction>,
-    mut commands: Commands,
     players: Option<Res<Players>>,
     turn_state: Res<TurnState>,
     pyramid: Res<Pyramid>,
@@ -824,7 +828,7 @@ pub fn handle_pyramid_click(
     let pyramid_size = Vec2::splat(PYRAMID_SIZE);
     let half_size = pyramid_size * 0.5;
 
-    for (entity, transform) in pyramid_query.iter() {
+    for transform in pyramid_query.iter() {
         let pyramid_pos = transform.translation().truncate();
         let min = pyramid_pos - half_size;
         let max = pyramid_pos + half_size;
@@ -833,11 +837,8 @@ pub fn handle_pyramid_click(
             && world_pos.y >= min.y && world_pos.y <= max.y
         {
             // Clicked on pyramid - trigger roll!
+            // Shake animation is triggered in handle_pyramid_roll_action
             roll_action.write(RollPyramidAction);
-
-            // Start shake animation
-            commands.entity(entity).insert(PyramidShakeAnimation::new());
-
             return;
         }
     }

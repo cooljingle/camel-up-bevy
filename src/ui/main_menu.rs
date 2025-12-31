@@ -1,5 +1,4 @@
 use bevy::prelude::*;
-use bevy::window::WindowMode;
 use bevy_egui::{egui, EguiContexts};
 use std::collections::HashSet;
 use crate::game::state::GameState;
@@ -38,7 +37,6 @@ pub fn main_menu_ui(
     mut next_state: ResMut<NextState<GameState>>,
     mut config: ResMut<PlayerSetupConfig>,
     mut ai_config: ResMut<AiConfig>,
-    mut windows: Query<&mut Window>,
     ui_state: Res<UiState>,
     time: Res<Time>,
     mut rules_state: ResMut<RulesState>,
@@ -187,19 +185,10 @@ pub fn main_menu_ui(
                     ui.checkbox(&mut config.randomize_start_order, egui::RichText::new("Randomize player order").color(egui::Color32::WHITE));
                 });
 
-                // Fullscreen toggle
-                ui.horizontal(|ui| {
-                    ui.add_space(10.0);
-                    ui.checkbox(&mut config.start_fullscreen, egui::RichText::new("Start fullscreen").color(egui::Color32::WHITE));
-                });
-
                 ui.add_space(10.0);
             });
 
             ui.add_space(if is_mobile { 15.0 } else { 30.0 });
-
-            // Track if start was clicked
-            let mut start_clicked = false;
 
             // Start Game button - larger on mobile for touch
             let start_style = if is_mobile {
@@ -213,16 +202,6 @@ pub fn main_menu_ui(
             };
 
             if desert_button(ui, "Start Game", &start_style).clicked() {
-                start_clicked = true;
-            }
-
-            // Apply fullscreen setting and start game after UI is done
-            if start_clicked {
-                if let Ok(mut window) = windows.single_mut() {
-                    if config.start_fullscreen {
-                        window.mode = WindowMode::BorderlessFullscreen(MonitorSelection::Current);
-                    }
-                }
                 next_state.set(GameState::Playing);
             }
 

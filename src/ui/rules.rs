@@ -157,7 +157,7 @@ fn draw_desktop_layout(ui: &mut egui::Ui, rules_state: &mut RulesState) {
             .max_height(400.0)
             .show(ui, |ui| {
                 ui.set_min_width(520.0);
-                draw_section_content(ui, rules_state);
+                draw_section_content(ui, rules_state, false);
             });
     });
 }
@@ -182,14 +182,14 @@ fn draw_mobile_layout(ui: &mut egui::Ui, rules_state: &mut RulesState) {
     egui::ScrollArea::vertical()
         .max_height(350.0)
         .show(ui, |ui| {
-            draw_section_content(ui, rules_state);
+            draw_section_content(ui, rules_state, true);
         });
 }
 
-fn draw_section_content(ui: &mut egui::Ui, rules_state: &mut RulesState) {
+fn draw_section_content(ui: &mut egui::Ui, rules_state: &mut RulesState, is_mobile: bool) {
     match rules_state.current_section {
-        RulesSection::Overview => draw_overview_section(ui),
-        RulesSection::CamelMovement => draw_movement_section(ui, rules_state),
+        RulesSection::Overview => draw_overview_section(ui, is_mobile),
+        RulesSection::CamelMovement => draw_movement_section(ui, rules_state, is_mobile),
         RulesSection::Betting => draw_betting_section(ui),
         RulesSection::DesertTiles => draw_desert_tiles_section(ui),
         RulesSection::Scoring => draw_scoring_section(ui),
@@ -200,7 +200,7 @@ fn draw_section_content(ui: &mut egui::Ui, rules_state: &mut RulesState) {
 // Overview Section
 // ============================================================================
 
-fn draw_overview_section(ui: &mut egui::Ui) {
+fn draw_overview_section(ui: &mut egui::Ui, is_mobile: bool) {
     ui.heading(egui::RichText::new("Welcome to Camel Up!").size(20.0).color(egui::Color32::WHITE));
     ui.add_space(12.0);
 
@@ -219,9 +219,9 @@ fn draw_overview_section(ui: &mut egui::Ui) {
     ui.heading(egui::RichText::new("On Your Turn").size(18.0).color(egui::Color32::WHITE));
     ui.add_space(12.0);
 
-    let icon_size = 60.0;
-    ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = 16.0;
+    let icon_size = if is_mobile { 50.0 } else { 60.0 };
+    ui.horizontal_wrapped(|ui| {
+        ui.spacing_mut().item_spacing.x = if is_mobile { 10.0 } else { 16.0 };
 
         // Roll Dice action
         draw_action_card(ui, icon_size, "Roll Dice", egui::Color32::from_rgb(100, 150, 200), |painter, rect| {
@@ -276,31 +276,45 @@ fn draw_overview_section(ui: &mut egui::Ui) {
     ui.add_space(8.0);
 
     let bullet_color = egui::Color32::from_rgb(255, 215, 0);
-    ui.horizontal(|ui| {
-        ui.label(egui::RichText::new("•").color(bullet_color));
-        ui.label(egui::RichText::new("Camels ").size(14.0).color(egui::Color32::WHITE).strong());
-        ui.label(egui::RichText::new("stack").size(14.0).color(egui::Color32::from_rgb(100, 200, 255)).strong());
-        ui.label(egui::RichText::new(" when they land on the same space").size(14.0).color(egui::Color32::LIGHT_GRAY));
-    });
-    ui.horizontal(|ui| {
-        ui.label(egui::RichText::new("•").color(bullet_color));
-        ui.label(egui::RichText::new("The camel ").size(14.0).color(egui::Color32::LIGHT_GRAY));
-        ui.label(egui::RichText::new("on top").size(14.0).color(egui::Color32::from_rgb(100, 255, 100)).strong());
-        ui.label(egui::RichText::new(" is considered ").size(14.0).color(egui::Color32::LIGHT_GRAY));
-        ui.label(egui::RichText::new("ahead").size(14.0).color(egui::Color32::from_rgb(100, 255, 100)).strong());
-    });
-    ui.horizontal(|ui| {
-        ui.label(egui::RichText::new("•").color(bullet_color));
-        ui.label(egui::RichText::new("A ").size(14.0).color(egui::Color32::LIGHT_GRAY));
-        ui.label(egui::RichText::new("leg").size(14.0).color(egui::Color32::from_rgb(255, 180, 100)).strong());
-        ui.label(egui::RichText::new(" ends when 5 dice have been rolled (including crazy camels)").size(14.0).color(egui::Color32::LIGHT_GRAY));
-    });
-    ui.horizontal(|ui| {
-        ui.label(egui::RichText::new("•").color(bullet_color));
-        ui.label(egui::RichText::new("The ").size(14.0).color(egui::Color32::LIGHT_GRAY));
-        ui.label(egui::RichText::new("game").size(14.0).color(egui::Color32::from_rgb(255, 100, 100)).strong());
-        ui.label(egui::RichText::new(" ends when a camel crosses space 16").size(14.0).color(egui::Color32::LIGHT_GRAY));
-    });
+    let highlight_blue = egui::Color32::from_rgb(100, 200, 255);
+    let highlight_green = egui::Color32::from_rgb(100, 255, 100);
+    let highlight_orange = egui::Color32::from_rgb(255, 180, 100);
+    let highlight_red = egui::Color32::from_rgb(255, 100, 100);
+
+    // Use LayoutJob for mixed formatting in a single label
+    let mut job = egui::text::LayoutJob::default();
+    job.wrap = egui::text::TextWrapping {
+        max_width: ui.available_width(),
+        ..Default::default()
+    };
+
+    // Bullet 1: Camels stack
+    job.append("• ", 0.0, egui::TextFormat { color: bullet_color, font_id: egui::FontId::proportional(14.0), ..Default::default() });
+    job.append("Camels ", 0.0, egui::TextFormat { color: egui::Color32::WHITE, font_id: egui::FontId::proportional(14.0), ..Default::default() });
+    job.append("stack", 0.0, egui::TextFormat { color: highlight_blue, font_id: egui::FontId::proportional(14.0), ..Default::default() });
+    job.append(" when they land on the same space\n", 0.0, egui::TextFormat { color: egui::Color32::LIGHT_GRAY, font_id: egui::FontId::proportional(14.0), ..Default::default() });
+
+    // Bullet 2: On top is ahead
+    job.append("• ", 0.0, egui::TextFormat { color: bullet_color, font_id: egui::FontId::proportional(14.0), ..Default::default() });
+    job.append("The camel ", 0.0, egui::TextFormat { color: egui::Color32::LIGHT_GRAY, font_id: egui::FontId::proportional(14.0), ..Default::default() });
+    job.append("on top", 0.0, egui::TextFormat { color: highlight_green, font_id: egui::FontId::proportional(14.0), ..Default::default() });
+    job.append(" is considered ", 0.0, egui::TextFormat { color: egui::Color32::LIGHT_GRAY, font_id: egui::FontId::proportional(14.0), ..Default::default() });
+    job.append("ahead", 0.0, egui::TextFormat { color: highlight_green, font_id: egui::FontId::proportional(14.0), ..Default::default() });
+    job.append("\n", 0.0, egui::TextFormat::default());
+
+    // Bullet 3: Leg ends
+    job.append("• ", 0.0, egui::TextFormat { color: bullet_color, font_id: egui::FontId::proportional(14.0), ..Default::default() });
+    job.append("A ", 0.0, egui::TextFormat { color: egui::Color32::LIGHT_GRAY, font_id: egui::FontId::proportional(14.0), ..Default::default() });
+    job.append("leg", 0.0, egui::TextFormat { color: highlight_orange, font_id: egui::FontId::proportional(14.0), ..Default::default() });
+    job.append(" ends when 5 dice have been rolled (including crazy camels)\n", 0.0, egui::TextFormat { color: egui::Color32::LIGHT_GRAY, font_id: egui::FontId::proportional(14.0), ..Default::default() });
+
+    // Bullet 4: Game ends
+    job.append("• ", 0.0, egui::TextFormat { color: bullet_color, font_id: egui::FontId::proportional(14.0), ..Default::default() });
+    job.append("The ", 0.0, egui::TextFormat { color: egui::Color32::LIGHT_GRAY, font_id: egui::FontId::proportional(14.0), ..Default::default() });
+    job.append("game", 0.0, egui::TextFormat { color: highlight_red, font_id: egui::FontId::proportional(14.0), ..Default::default() });
+    job.append(" ends when a camel crosses space 16", 0.0, egui::TextFormat { color: egui::Color32::LIGHT_GRAY, font_id: egui::FontId::proportional(14.0), ..Default::default() });
+
+    ui.label(job);
 }
 
 fn draw_action_card(
@@ -330,19 +344,22 @@ fn draw_action_card(
 // Camel Movement Section
 // ============================================================================
 
-fn draw_movement_section(ui: &mut egui::Ui, rules_state: &mut RulesState) {
+fn draw_movement_section(ui: &mut egui::Ui, rules_state: &mut RulesState, is_mobile: bool) {
     ui.heading(egui::RichText::new("Camel Movement").size(20.0).color(egui::Color32::WHITE));
     ui.add_space(12.0);
 
     // Stacking Demo
     ui.group(|ui| {
-        ui.set_min_width(400.0);
+        // Don't set min width on mobile - let it be responsive
+        if !is_mobile {
+            ui.set_min_width(400.0);
+        }
         ui.vertical_centered(|ui| {
             ui.label(egui::RichText::new("How Stacking Works").size(16.0).color(egui::Color32::WHITE).strong());
         });
         ui.add_space(8.0);
 
-        draw_stacking_demo(ui, rules_state.demo_elapsed);
+        draw_stacking_demo(ui, rules_state.demo_elapsed, is_mobile);
 
         ui.add_space(8.0);
         ui.vertical_centered(|ui| {
@@ -418,22 +435,34 @@ fn draw_movement_section(ui: &mut egui::Ui, rules_state: &mut RulesState) {
         .size(14.0).color(egui::Color32::LIGHT_GRAY));
 }
 
-fn draw_stacking_demo(ui: &mut egui::Ui, elapsed: f32) {
-    let (rect, _) = ui.allocate_exact_size(egui::vec2(400.0, 140.0), egui::Sense::hover());
+fn draw_stacking_demo(ui: &mut egui::Ui, elapsed: f32, is_mobile: bool) {
+    // Make width responsive - use available width clamped to reasonable bounds
+    let demo_width = if is_mobile {
+        ui.available_width().min(400.0).max(260.0)
+    } else {
+        400.0
+    };
+    let demo_height = if is_mobile { 140.0 } else { 160.0 };
+
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(demo_width, demo_height), egui::Sense::hover());
     let painter = ui.painter();
 
     // Background
     painter.rect_filled(rect, 4.0, egui::Color32::from_rgb(40, 35, 30));
 
-    // Draw 3 track spaces
-    let space_width = 80.0;
-    let space_height = 40.0;
-    let track_y = rect.max.y - 50.0;
-    let start_x = rect.min.x + 60.0;
+    // Scale factor for responsive sizing (based on 400px reference)
+    let scale = demo_width / 400.0;
 
+    // Draw 3 track spaces - scaled
+    let space_width = 80.0 * scale;
+    let space_height = 40.0 * scale.max(0.8); // Don't shrink height as much
+    let track_y = rect.max.y - (50.0 * scale.max(0.8));
+    let start_x = rect.min.x + (60.0 * scale);
+
+    let space_gap = 20.0 * scale;
     for i in 0..3 {
         let space_rect = egui::Rect::from_min_size(
-            egui::pos2(start_x + (i as f32 * (space_width + 20.0)), track_y),
+            egui::pos2(start_x + (i as f32 * (space_width + space_gap)), track_y),
             egui::vec2(space_width, space_height),
         );
         painter.rect_filled(space_rect, 4.0, SAND_COLOR);
@@ -452,9 +481,9 @@ fn draw_stacking_demo(ui: &mut egui::Ui, elapsed: f32) {
     let phase = (elapsed / 2.0) as usize % 4;
     let phase_progress = (elapsed % 2.0) / 2.0;
 
-    let camel_size = egui::vec2(36.0, 28.0);
+    let camel_size = egui::vec2(36.0 * scale, 28.0 * scale);
     let space_1_x = start_x + space_width / 2.0;
-    let space_2_x = start_x + space_width + 20.0 + space_width / 2.0;
+    let space_2_x = start_x + space_width + space_gap + space_width / 2.0;
 
     // Helper to draw a camel at position
     let draw_camel = |painter: &egui::Painter, x: f32, y: f32, color: CamelColor| {
@@ -468,8 +497,8 @@ fn draw_stacking_demo(ui: &mut egui::Ui, elapsed: f32) {
         draw_camel_silhouette(painter, camel_rect, egui_color, border);
     };
 
-    let base_y = track_y - 14.0;
-    let stack_offset = 20.0;
+    let base_y = track_y - (14.0 * scale);
+    let stack_offset = 14.0 * scale;
 
     match phase {
         0 => {
@@ -493,7 +522,7 @@ fn draw_stacking_demo(ui: &mut egui::Ui, elapsed: f32) {
                 let drop_progress = phase_progress * 2.0;
                 let start_y = rect.min.y + 30.0;
                 let end_y = base_y - stack_offset;
-                start_y + (end_y - start_y) * ease_out_bounce(drop_progress)
+                start_y + (end_y - start_y) * ease_out_cubic(drop_progress)
             } else {
                 base_y - stack_offset
             };
@@ -502,7 +531,7 @@ fn draw_stacking_demo(ui: &mut egui::Ui, elapsed: f32) {
             painter.text(
                 egui::pos2(rect.center().x, rect.min.y + 20.0),
                 egui::Align2::CENTER_CENTER,
-                "Red lands on Blue → stacks ON TOP",
+                "Red lands on Blue -> stacks ON TOP",
                 egui::FontId::proportional(14.0),
                 egui::Color32::from_rgb(255, 180, 100),
             );
@@ -516,7 +545,7 @@ fn draw_stacking_demo(ui: &mut egui::Ui, elapsed: f32) {
                 let drop_progress = phase_progress * 2.0;
                 let start_y = rect.min.y + 30.0;
                 let end_y = base_y - stack_offset * 2.0;
-                start_y + (end_y - start_y) * ease_out_bounce(drop_progress)
+                start_y + (end_y - start_y) * ease_out_cubic(drop_progress)
             } else {
                 base_y - stack_offset * 2.0
             };
@@ -525,7 +554,7 @@ fn draw_stacking_demo(ui: &mut egui::Ui, elapsed: f32) {
             painter.text(
                 egui::pos2(rect.center().x, rect.min.y + 20.0),
                 egui::Align2::CENTER_CENTER,
-                "Green lands → joins the stack on top!",
+                "Green lands -> joins the stack on top!",
                 egui::FontId::proportional(14.0),
                 egui::Color32::from_rgb(100, 255, 100),
             );
@@ -542,29 +571,11 @@ fn draw_stacking_demo(ui: &mut egui::Ui, elapsed: f32) {
             painter.text(
                 egui::pos2(rect.center().x, rect.min.y + 20.0),
                 egui::Align2::CENTER_CENTER,
-                "Blue moves → carries Red and Green!",
+                "Blue moves -> carries Red and Green!",
                 egui::FontId::proportional(14.0),
                 egui::Color32::from_rgb(100, 180, 255),
             );
         }
-    }
-}
-
-fn ease_out_bounce(t: f32) -> f32 {
-    const N1: f32 = 7.5625;
-    const D1: f32 = 2.75;
-
-    if t < 1.0 / D1 {
-        N1 * t * t
-    } else if t < 2.0 / D1 {
-        let t = t - 1.5 / D1;
-        N1 * t * t + 0.75
-    } else if t < 2.5 / D1 {
-        let t = t - 2.25 / D1;
-        N1 * t * t + 0.9375
-    } else {
-        let t = t - 2.625 / D1;
-        N1 * t * t + 0.984375
     }
 }
 
@@ -663,8 +674,8 @@ fn draw_desert_tiles_section(ui: &mut egui::Ui) {
 
         ui.vertical(|ui| {
             ui.add_space(20.0);
-            ui.label(egui::RichText::new("→ Camel moves +1 extra space").size(14.0).color(egui::Color32::LIGHT_GRAY));
-            ui.label(egui::RichText::new("→ Lands ON TOP of any stack").size(14.0).color(egui::Color32::from_rgb(100, 255, 100)));
+            ui.label(egui::RichText::new("Camel moves +1 extra space").size(14.0).color(egui::Color32::LIGHT_GRAY));
+            ui.label(egui::RichText::new("Lands ON TOP of any stack").size(14.0).color(egui::Color32::from_rgb(100, 255, 100)));
         });
     });
 
@@ -687,8 +698,8 @@ fn draw_desert_tiles_section(ui: &mut egui::Ui) {
 
         ui.vertical(|ui| {
             ui.add_space(20.0);
-            ui.label(egui::RichText::new("→ Camel moves -1 space (backwards)").size(14.0).color(egui::Color32::LIGHT_GRAY));
-            ui.label(egui::RichText::new("→ Lands UNDERNEATH any stack").size(14.0).color(egui::Color32::from_rgb(255, 150, 150)));
+            ui.label(egui::RichText::new("Camel moves -1 space (backwards)").size(14.0).color(egui::Color32::LIGHT_GRAY));
+            ui.label(egui::RichText::new("Lands UNDERNEATH any stack").size(14.0).color(egui::Color32::from_rgb(255, 150, 150)));
         });
     });
 

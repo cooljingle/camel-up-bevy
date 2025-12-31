@@ -9,7 +9,7 @@ use wasm_bindgen::prelude::*;
 /// Check if running on a mobile device (WASM only)
 /// Reads from window.isMobileDevice set by JavaScript
 #[cfg(target_arch = "wasm32")]
-fn is_mobile_device() -> bool {
+pub fn is_mobile_device() -> bool {
     use web_sys::window;
 
     if let Some(win) = window() {
@@ -18,6 +18,26 @@ fn is_mobile_device() -> bool {
             return value.as_bool().unwrap_or(false);
         }
     }
+    false
+}
+
+/// Check if running on iPhone (WASM only)
+/// Fullscreen API is not supported on iPhone
+#[cfg(target_arch = "wasm32")]
+pub fn is_iphone() -> bool {
+    use web_sys::window;
+
+    if let Some(win) = window() {
+        if let Ok(value) = js_sys::Reflect::get(&win, &JsValue::from_str("isIPhone")) {
+            return value.as_bool().unwrap_or(false);
+        }
+    }
+    false
+}
+
+/// Non-WASM stub - always returns false
+#[cfg(not(target_arch = "wasm32"))]
+pub fn is_iphone() -> bool {
     false
 }
 
@@ -44,7 +64,6 @@ impl Default for PlayerConfig {
 pub struct PlayerSetupConfig {
     pub players: Vec<PlayerConfig>,
     pub randomize_start_order: bool,
-    pub start_fullscreen: bool,
 }
 
 impl Default for PlayerSetupConfig {
@@ -82,11 +101,6 @@ impl Default for PlayerSetupConfig {
                 },
             ],
             randomize_start_order: false,
-            // Default to fullscreen on mobile web, but not on desktop (web or native)
-            #[cfg(target_arch = "wasm32")]
-            start_fullscreen: is_mobile_device(),
-            #[cfg(not(target_arch = "wasm32"))]
-            start_fullscreen: false,
         }
     }
 }

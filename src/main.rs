@@ -221,7 +221,7 @@ const SIDE_PANEL_ASPECT_RATIO: f32 = 1.2; // Minimum aspect ratio for side panel
 
 /// Resource to track camera state for zoom transitions
 #[derive(Resource, Default)]
-struct CameraState {
+pub struct CameraState {
     /// Tracks the previous value of initial_rolls_complete to detect transitions
     last_initial_rolls_complete: bool,
 }
@@ -277,7 +277,7 @@ const GAME_WORLD_HEIGHT: f32 = 400.0; // Board height + stack space + margins
 // Board layout constants
 const BOARD_START_X: f32 = -280.0;  // X position of space 0
 const BOARD_SPACING: f32 = 80.0;    // Distance between spaces
-const BOARD_MARGIN: f32 = 85.0;     // Margin on each side
+const BOARD_MARGIN: f32 = 85.0;     // Margin on each side (reduced for mobile breathing room)
 
 /// Calculate the X range of the board that should be visible based on game state
 /// Returns (min_x, max_x) in world coordinates
