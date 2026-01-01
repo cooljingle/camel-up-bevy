@@ -891,3 +891,56 @@ fn draw_big_smile(painter: &egui::Painter, center: Pos2, radius: f32) {
         Color32::from_rgb(255, 240, 240), // Teeth white
     );
 }
+
+/// Draw a small crown on top of an avatar (for winner)
+pub fn draw_avatar_crown(painter: &egui::Painter, rect: Rect) {
+    let center = rect.center();
+    let size = rect.width().min(rect.height());
+
+    // Crown positioned at top of avatar
+    let crown_center = Pos2::new(center.x, rect.min.y - size * 0.12);
+    let scale = size * 0.015; // Scale crown based on avatar size
+
+    // Crown colors
+    let gold = Color32::from_rgb(255, 215, 0);
+    let gold_dark = Color32::from_rgb(200, 160, 0);
+    let jewel_red = Color32::from_rgb(220, 50, 50);
+    let jewel_blue = Color32::from_rgb(50, 100, 220);
+
+    // Crown dimensions (scaled)
+    let crown_width = 8.0 * scale;
+    let crown_height = 4.0 * scale;
+    let point_height = 4.0 * scale;
+    let point_width = 2.5 * scale;
+
+    // Crown base (rectangle)
+    let base_rect = Rect::from_center_size(
+        crown_center + egui::vec2(0.0, 1.5 * scale),
+        egui::vec2(crown_width, crown_height * 0.5)
+    );
+    painter.rect_filled(base_rect, 1.0 * scale, gold);
+
+    // Crown points (3 triangles)
+    let point_y = crown_center.y - 1.0 * scale;
+
+    for i in 0..3 {
+        let x_offset = (i as f32 - 1.0) * 2.5 * scale;
+        let point_center = Pos2::new(crown_center.x + x_offset, point_y);
+
+        // Triangle for crown point
+        let points = vec![
+            Pos2::new(point_center.x, point_center.y - point_height),  // Top
+            Pos2::new(point_center.x - point_width / 2.0, point_center.y),  // Bottom left
+            Pos2::new(point_center.x + point_width / 2.0, point_center.y),  // Bottom right
+        ];
+        painter.add(egui::Shape::convex_polygon(points, gold, egui::Stroke::new(0.5 * scale, gold_dark)));
+    }
+
+    // Small gems on crown points
+    let gem_colors = [jewel_red, jewel_blue, jewel_red];
+    for i in 0..3 {
+        let x_offset = (i as f32 - 1.0) * 2.5 * scale;
+        let gem_pos = Pos2::new(crown_center.x + x_offset, point_y - 2.0 * scale);
+        painter.circle_filled(gem_pos, 1.0 * scale, gem_colors[i]);
+    }
+}
