@@ -216,15 +216,15 @@ pub fn draw_camel_with_dunce_cap(painter: &egui::Painter, rect: egui::Rect) {
 /// Draws just a crown overlay on top of a camel silhouette
 /// The rect should be the same rect used for draw_camel_silhouette
 pub fn draw_crown_overlay(painter: &egui::Painter, rect: egui::Rect) {
-    // Calculate crown position based on rect (on head, left side of camel)
+    // Calculate crown position based on rect (on head, right side of camel)
     let center = rect.center();
     let scale = (rect.width().min(rect.height()) / 30.0).min(1.0);
     let body_center = center + egui::vec2(-2.0 * scale, 2.0 * scale);
-    let neck_center = body_center + egui::vec2(-8.0 * scale, -4.0 * scale);
-    let head_center = neck_center + egui::vec2(-3.0 * scale, -5.0 * scale);
+    let neck_center = body_center + egui::vec2(8.0 * scale, -4.0 * scale);
+    let head_center = neck_center + egui::vec2(3.0 * scale, -5.0 * scale);
 
     // Crown position - on top of head
-    let crown_center = head_center + egui::vec2(-1.0 * scale, -5.0 * scale);
+    let crown_center = head_center + egui::vec2(0.0, -5.0 * scale);
     let crown_width = 8.0 * scale;
     let crown_height = 4.0 * scale;
 

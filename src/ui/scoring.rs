@@ -6,7 +6,7 @@ use crate::game::state::GameState;
 use crate::systems::movement::{get_leading_camel, get_second_place_camel, get_last_place_camel};
 use crate::systems::turn::{PlayerLegBetsStore, PlayerPyramidTokens};
 use crate::systems::animation::{spawn_firework, random_firework_color};
-use crate::ui::characters::{draw_avatar, draw_avatar_with_expression};
+use crate::ui::characters::{draw_avatar, draw_avatar_with_expression, draw_avatar_crown};
 use crate::ui::hud::{camel_color_to_egui, draw_camel_silhouette, draw_crown_overlay, draw_dunce_cap_overlay, draw_mini_leg_bet_card};
 
 /// Player colors for visual distinction (same as in hud.rs)
@@ -1035,6 +1035,9 @@ fn draw_final_results_mobile_panels(
                         egui::Sense::hover()
                     );
                     draw_avatar_with_expression(ui.painter(), rect, player.character_id, Some(player_color), is_winner);
+                    if is_winner {
+                        draw_avatar_crown(ui.painter(), rect);
+                    }
 
                     ui.add_space(4.0);
 
@@ -1078,6 +1081,7 @@ fn draw_final_results_mobile_panels(
                             egui::Sense::hover()
                         );
                         draw_avatar_with_expression(ui.painter(), rect, winner.character_id, Some(winner_color), true);
+                        draw_avatar_crown(ui.painter(), rect);
 
                         ui.add_space(8.0);
 
@@ -1208,6 +1212,9 @@ fn draw_final_results_phase(
                                 let (rect, _) = ui.allocate_exact_size(egui::vec2(standings_avatar_size, standings_avatar_size), egui::Sense::hover());
                                 // Winner gets a happy expression!
                                 draw_avatar_with_expression(ui.painter(), rect, player.character_id, Some(player_color), is_winner);
+                                if is_winner {
+                                    draw_avatar_crown(ui.painter(), rect);
+                                }
 
                                 ui.add_space(if is_mobile { 5.0 } else { 10.0 });
 
@@ -1244,6 +1251,7 @@ fn draw_final_results_phase(
                                 // Winner avatar - with happy expression!
                                 let (rect, _) = ui.allocate_exact_size(egui::vec2(winner_avatar_size, winner_avatar_size), egui::Sense::hover());
                                 draw_avatar_with_expression(ui.painter(), rect, winner.character_id, Some(winner_color), true);
+                                draw_avatar_crown(ui.painter(), rect);
 
                                 ui.add_space(if is_mobile { 8.0 } else { 15.0 });
 

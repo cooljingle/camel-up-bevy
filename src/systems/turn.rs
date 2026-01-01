@@ -573,8 +573,13 @@ pub fn check_game_end_system(
                 );
 
                 // Spawn crown directly on the winner's head
-                // Head is at (+22, +16) relative to camel center, crown sits on top
-                let crown_pos = Vec3::new(winner_target_x + 22.0, winner_target_y + 35.0, 50.0);
+                // Head is at (+22, +16) relative to camel center (14px wide, 10px tall)
+                // Crown is 18px wide, head is 14px wide
+                // Position crown so it sits nicely on head without extending too far forward
+                let head_center_x = winner_target_x + 22.0;
+                let head_top_y = winner_target_y + 16.0 + 5.0; // head height is 10, so +5 to top
+                // Shift crown 2px left so it doesn't extend as far to the right
+                let crown_pos = Vec3::new(head_center_x - 2.0, head_top_y + 8.0, 50.0);
                 spawn_crown(&mut commands, crown_pos);
 
                 info!("Crown spawned for winning camel!");
