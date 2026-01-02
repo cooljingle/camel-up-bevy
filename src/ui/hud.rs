@@ -1,51 +1,35 @@
+use crate::components::dice::PyramidDie;
+use crate::components::{
+    BoardPosition, Camel, CamelColor, CrazyCamel, CrazyCamelColor, LegBettingTiles,
+    PlacedSpectatorTiles, Players, Pyramid, RaceBets, SpectatorTile, TRACK_LENGTH,
+};
+use crate::game::state::GameState;
+use crate::systems::movement::{get_leading_camel, get_second_place_camel};
+use crate::systems::setup::PendingInitialMove;
+use crate::systems::turn::{
+    CrazyCamelRollResult, PlaceRaceBetAction, PlaceSpectatorTileAction, PlayerLegBetsStore,
+    PlayerPyramidTokens, PyramidRollResult, RollPyramidAction, TakeLegBetAction, TurnState,
+};
+use crate::ui::characters::{draw_avatar, CharacterId};
+use crate::ui::player_setup::is_iphone;
+use crate::ui::rules::{draw_rules_ui, RulesState};
+use crate::ui::theme::{
+    camel_color_to_egui, crazy_camel_color_to_egui, desert_button, desktop, draw_overlapping_stack,
+    draw_spaced_row, layout, mobile, DesertButtonStyle, PLAYER_COLORS,
+};
 use bevy::prelude::*;
 use bevy::window::{MonitorSelection, WindowMode};
 use bevy_egui::{egui, EguiContexts};
-use crate::components::{Players, Pyramid, LegBettingTiles, RaceBets, CamelColor, CrazyCamelColor, Camel, CrazyCamel, BoardPosition, PlacedSpectatorTiles, SpectatorTile, TRACK_LENGTH};
-use crate::components::dice::PyramidDie;
-use crate::systems::turn::{TurnState, RollPyramidAction, TakeLegBetAction, PlaceRaceBetAction, PlaceSpectatorTileAction, PyramidRollResult, CrazyCamelRollResult, PlayerLegBetsStore, PlayerPyramidTokens};
-use crate::systems::movement::{get_leading_camel, get_second_place_camel};
-use crate::game::state::GameState;
-use crate::ui::characters::{draw_avatar, CharacterId};
-use crate::ui::rules::{RulesState, draw_rules_ui};
-use crate::ui::theme::{desert_button, DesertButtonStyle};
-use crate::ui::player_setup::is_iphone;
-
-/// Player colors for visual distinction
-const PLAYER_COLORS: [egui::Color32; 8] = [
-    egui::Color32::from_rgb(220, 50, 50),   // Red
-    egui::Color32::from_rgb(50, 120, 220),  // Blue
-    egui::Color32::from_rgb(50, 180, 80),   // Green
-    egui::Color32::from_rgb(220, 180, 50),  // Yellow
-    egui::Color32::from_rgb(180, 80, 220),  // Purple
-    egui::Color32::from_rgb(220, 130, 50),  // Orange
-    egui::Color32::from_rgb(80, 200, 200),  // Cyan
-    egui::Color32::from_rgb(200, 100, 150), // Pink
-];
-
-/// Convert CamelColor to egui Color32 for UI display
-pub fn camel_color_to_egui(color: CamelColor) -> egui::Color32 {
-    match color {
-        CamelColor::Blue => egui::Color32::from_rgb(50, 100, 230),
-        CamelColor::Green => egui::Color32::from_rgb(50, 200, 80),
-        CamelColor::Red => egui::Color32::from_rgb(230, 50, 50),
-        CamelColor::Yellow => egui::Color32::from_rgb(240, 230, 50),
-        CamelColor::Purple => egui::Color32::from_rgb(150, 50, 200),
-    }
-}
-
-/// Convert CrazyCamelColor to egui Color32 for UI display
-fn crazy_camel_color_to_egui(color: CrazyCamelColor) -> egui::Color32 {
-    match color {
-        CrazyCamelColor::Black => egui::Color32::from_rgb(40, 40, 40),
-        CrazyCamelColor::White => egui::Color32::from_rgb(240, 240, 240),
-    }
-}
 
 /// Helper function to draw a small camel silhouette for UI elements
 /// Draws a stylized side-view camel using 4 layers (shadow, border, main, highlight)
 /// to match the polished look of the board camels
-pub fn draw_camel_silhouette(painter: &egui::Painter, rect: egui::Rect, color: egui::Color32, border_color: egui::Color32) {
+pub fn draw_camel_silhouette(
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    color: egui::Color32,
+    border_color: egui::Color32,
+) {
     let center = rect.center();
     let scale = (rect.width().min(rect.height()) / 30.0).min(1.0);
 
@@ -77,20 +61,36 @@ pub fn draw_camel_silhouette(painter: &egui::Painter, rect: egui::Rect, color: e
     let leg_width = 2.5 * scale;
     let leg_height = 7.0 * scale;
     let leg_positions = [
-        body_center + egui::vec2(-5.0 * scale, 7.0 * scale),   // Back left
-        body_center + egui::vec2(-2.0 * scale, 7.0 * scale),   // Back right
-        body_center + egui::vec2(4.0 * scale, 7.0 * scale),    // Front left
-        body_center + egui::vec2(7.0 * scale, 7.0 * scale),    // Front right
+        body_center + egui::vec2(-5.0 * scale, 7.0 * scale), // Back left
+        body_center + egui::vec2(-2.0 * scale, 7.0 * scale), // Back right
+        body_center + egui::vec2(4.0 * scale, 7.0 * scale),  // Front left
+        body_center + egui::vec2(7.0 * scale, 7.0 * scale),  // Front right
     ];
 
     // === Layer 1: SHADOW ===
     let shadow_offset = egui::vec2(1.5 * scale, 1.5 * scale);
     let shadow_color = egui::Color32::from_rgba_unmultiplied(0, 0, 0, 76); // ~0.3 alpha
 
-    painter.rect_filled(body_rect.translate(shadow_offset), 1.0 * scale, shadow_color);
-    painter.rect_filled(hump_rect.translate(shadow_offset), 1.0 * scale, shadow_color);
-    painter.rect_filled(neck_rect.translate(shadow_offset), 0.5 * scale, shadow_color);
-    painter.rect_filled(head_rect.translate(shadow_offset), 1.0 * scale, shadow_color);
+    painter.rect_filled(
+        body_rect.translate(shadow_offset),
+        1.0 * scale,
+        shadow_color,
+    );
+    painter.rect_filled(
+        hump_rect.translate(shadow_offset),
+        1.0 * scale,
+        shadow_color,
+    );
+    painter.rect_filled(
+        neck_rect.translate(shadow_offset),
+        0.5 * scale,
+        shadow_color,
+    );
+    painter.rect_filled(
+        head_rect.translate(shadow_offset),
+        1.0 * scale,
+        shadow_color,
+    );
     for leg_pos in &leg_positions {
         let leg_rect = egui::Rect::from_center_size(*leg_pos, egui::vec2(leg_width, leg_height));
         painter.rect_filled(leg_rect.translate(shadow_offset), 0.5 * scale, shadow_color);
@@ -104,7 +104,11 @@ pub fn draw_camel_silhouette(painter: &egui::Painter, rect: egui::Rect, color: e
     painter.rect_filled(head_rect.expand(border_expand), 1.0 * scale, border_color);
     for leg_pos in &leg_positions {
         let leg_rect = egui::Rect::from_center_size(*leg_pos, egui::vec2(leg_width, leg_height));
-        painter.rect_filled(leg_rect.expand(border_expand * 0.5), 0.5 * scale, border_color);
+        painter.rect_filled(
+            leg_rect.expand(border_expand * 0.5),
+            0.5 * scale,
+            border_color,
+        );
     }
 
     // === Layer 3: MAIN COLOR ===
@@ -123,14 +127,14 @@ pub fn draw_camel_silhouette(painter: &egui::Painter, rect: egui::Rect, color: e
     // Highlight strip on hump
     let hump_highlight_rect = egui::Rect::from_center_size(
         hump_center + egui::vec2(0.0, -2.0 * scale),
-        egui::vec2((hump_width - 2.0 * scale).max(2.0), 2.0 * scale)
+        egui::vec2((hump_width - 2.0 * scale).max(2.0), 2.0 * scale),
     );
     painter.rect_filled(hump_highlight_rect, 0.5 * scale, highlight_color);
 
     // Highlight strip on head
     let head_highlight_rect = egui::Rect::from_center_size(
         head_center + egui::vec2(0.0, -1.5 * scale),
-        egui::vec2((head_width - 2.0 * scale).max(2.0), 1.5 * scale)
+        egui::vec2((head_width - 2.0 * scale).max(2.0), 1.5 * scale),
     );
     painter.rect_filled(head_highlight_rect, 0.5 * scale, highlight_color);
 
@@ -141,7 +145,7 @@ pub fn draw_camel_silhouette(painter: &egui::Painter, rect: egui::Rect, color: e
 
 /// Draws a grey camel with a gold crown on its head (winner icon)
 pub fn draw_camel_with_crown(painter: &egui::Painter, rect: egui::Rect) {
-    let camel_color = egui::Color32::from_rgb(140, 140, 140);  // Grey camel
+    let camel_color = egui::Color32::from_rgb(140, 140, 140); // Grey camel
     let border_color = egui::Color32::from_rgb(80, 80, 80);
 
     // Draw the camel first
@@ -166,7 +170,7 @@ pub fn draw_camel_with_crown(painter: &egui::Painter, rect: egui::Rect) {
     // Crown base (rectangle)
     let base_rect = egui::Rect::from_center_size(
         crown_center + egui::vec2(0.0, 1.5 * scale),
-        egui::vec2(crown_width, crown_height * 0.5)
+        egui::vec2(crown_width, crown_height * 0.5),
     );
     painter.rect_filled(base_rect, 1.0 * scale, gold);
 
@@ -181,18 +185,22 @@ pub fn draw_camel_with_crown(painter: &egui::Painter, rect: egui::Rect) {
 
         // Triangle for crown point
         let points = vec![
-            egui::pos2(point_center.x, point_center.y - point_height),  // Top
-            egui::pos2(point_center.x - point_width / 2.0, point_center.y),  // Bottom left
-            egui::pos2(point_center.x + point_width / 2.0, point_center.y),  // Bottom right
+            egui::pos2(point_center.x, point_center.y - point_height), // Top
+            egui::pos2(point_center.x - point_width / 2.0, point_center.y), // Bottom left
+            egui::pos2(point_center.x + point_width / 2.0, point_center.y), // Bottom right
         ];
-        painter.add(egui::Shape::convex_polygon(points, gold, egui::Stroke::new(0.5 * scale, gold_dark)));
+        painter.add(egui::Shape::convex_polygon(
+            points,
+            gold,
+            egui::Stroke::new(0.5 * scale, gold_dark),
+        ));
     }
 
     // Small gems on crown points
     let gem_colors = [
-        egui::Color32::from_rgb(220, 50, 50),   // Red
-        egui::Color32::from_rgb(50, 100, 220),  // Blue
-        egui::Color32::from_rgb(220, 50, 50),   // Red
+        egui::Color32::from_rgb(220, 50, 50),  // Red
+        egui::Color32::from_rgb(50, 100, 220), // Blue
+        egui::Color32::from_rgb(220, 50, 50),  // Red
     ];
     for i in 0..3 {
         let x_offset = (i as f32 - 1.0) * 2.5 * scale;
@@ -203,7 +211,7 @@ pub fn draw_camel_with_crown(painter: &egui::Painter, rect: egui::Rect) {
 
 /// Draws a grey camel with a dunce cap on its head (loser icon)
 pub fn draw_camel_with_dunce_cap(painter: &egui::Painter, rect: egui::Rect) {
-    let camel_color = egui::Color32::from_rgb(140, 140, 140);  // Grey camel
+    let camel_color = egui::Color32::from_rgb(140, 140, 140); // Grey camel
     let border_color = egui::Color32::from_rgb(80, 80, 80);
 
     // Draw the camel first
@@ -235,7 +243,7 @@ pub fn draw_crown_overlay(painter: &egui::Painter, rect: egui::Rect) {
     // Crown base (rectangle)
     let base_rect = egui::Rect::from_center_size(
         crown_center + egui::vec2(0.0, 1.5 * scale),
-        egui::vec2(crown_width, crown_height * 0.5)
+        egui::vec2(crown_width, crown_height * 0.5),
     );
     painter.rect_filled(base_rect, 1.0 * scale, gold);
 
@@ -250,18 +258,83 @@ pub fn draw_crown_overlay(painter: &egui::Painter, rect: egui::Rect) {
 
         // Triangle for crown point
         let points = vec![
-            egui::pos2(point_center.x, point_center.y - point_height),  // Top
-            egui::pos2(point_center.x - point_width / 2.0, point_center.y),  // Bottom left
-            egui::pos2(point_center.x + point_width / 2.0, point_center.y),  // Bottom right
+            egui::pos2(point_center.x, point_center.y - point_height), // Top
+            egui::pos2(point_center.x - point_width / 2.0, point_center.y), // Bottom left
+            egui::pos2(point_center.x + point_width / 2.0, point_center.y), // Bottom right
         ];
-        painter.add(egui::Shape::convex_polygon(points, gold, egui::Stroke::new(0.5 * scale, gold_dark)));
+        painter.add(egui::Shape::convex_polygon(
+            points,
+            gold,
+            egui::Stroke::new(0.5 * scale, gold_dark),
+        ));
     }
 
     // Small gems on crown points
     let gem_colors = [
-        egui::Color32::from_rgb(220, 50, 50),   // Red
-        egui::Color32::from_rgb(50, 100, 220),  // Blue
-        egui::Color32::from_rgb(220, 50, 50),   // Red
+        egui::Color32::from_rgb(220, 50, 50),  // Red
+        egui::Color32::from_rgb(50, 100, 220), // Blue
+        egui::Color32::from_rgb(220, 50, 50),  // Red
+    ];
+    for i in 0..3 {
+        let x_offset = (i as f32 - 1.0) * 2.5 * scale;
+        let gem_pos = egui::pos2(crown_center.x + x_offset, point_y - 2.0 * scale);
+        painter.circle_filled(gem_pos, 1.0 * scale, gem_colors[i]);
+    }
+}
+
+/// Draws a silver crown overlay on top of a camel silhouette (2nd place)
+/// The rect should be the same rect used for draw_camel_silhouette
+pub fn draw_silver_crown_overlay(painter: &egui::Painter, rect: egui::Rect) {
+    // Calculate crown position based on rect (on head, right side of camel)
+    let center = rect.center();
+    let scale = (rect.width().min(rect.height()) / 30.0).min(1.0);
+    let body_center = center + egui::vec2(-2.0 * scale, 2.0 * scale);
+    let neck_center = body_center + egui::vec2(8.0 * scale, -4.0 * scale);
+    let head_center = neck_center + egui::vec2(3.0 * scale, -5.0 * scale);
+
+    // Crown position - on top of head
+    let crown_center = head_center + egui::vec2(0.0, -5.0 * scale);
+    let crown_width = 8.0 * scale;
+    let crown_height = 4.0 * scale;
+
+    // Silver crown colors
+    let silver = egui::Color32::from_rgb(200, 200, 210);
+    let silver_dark = egui::Color32::from_rgb(140, 140, 150);
+
+    // Crown base (rectangle)
+    let base_rect = egui::Rect::from_center_size(
+        crown_center + egui::vec2(0.0, 1.5 * scale),
+        egui::vec2(crown_width, crown_height * 0.5),
+    );
+    painter.rect_filled(base_rect, 1.0 * scale, silver);
+
+    // Crown points (3 triangles)
+    let point_height = 4.0 * scale;
+    let point_width = 2.5 * scale;
+    let point_y = crown_center.y - 1.0 * scale;
+
+    for i in 0..3 {
+        let x_offset = (i as f32 - 1.0) * 2.5 * scale;
+        let point_center = egui::pos2(crown_center.x + x_offset, point_y);
+
+        // Triangle for crown point
+        let points = vec![
+            egui::pos2(point_center.x, point_center.y - point_height), // Top
+            egui::pos2(point_center.x - point_width / 2.0, point_center.y), // Bottom left
+            egui::pos2(point_center.x + point_width / 2.0, point_center.y), // Bottom right
+        ];
+        painter.add(egui::Shape::convex_polygon(
+            points,
+            silver,
+            egui::Stroke::new(0.5 * scale, silver_dark),
+        ));
+    }
+
+    // Small gems on crown points - light blue and pearl for silver
+    let gem_colors = [
+        egui::Color32::from_rgb(100, 180, 220), // Light blue
+        egui::Color32::from_rgb(180, 180, 200), // Pearl
+        egui::Color32::from_rgb(100, 180, 220), // Light blue
     ];
     for i in 0..3 {
         let x_offset = (i as f32 - 1.0) * 2.5 * scale;
@@ -286,22 +359,29 @@ pub fn draw_dunce_cap_overlay(painter: &egui::Painter, rect: egui::Rect) {
     let cap_width = 6.0 * scale;
 
     // Cap colors - muted/subdued
-    let cap_color = egui::Color32::from_rgb(100, 100, 110);  // Muted grey-blue
+    let cap_color = egui::Color32::from_rgb(100, 100, 110); // Muted grey-blue
     let cap_outline = egui::Color32::from_rgb(60, 60, 70);
 
     // Dunce cap triangle
     let points = vec![
-        egui::pos2(cap_base.x, cap_base.y - cap_height),  // Top point
-        egui::pos2(cap_base.x - cap_width / 2.0, cap_base.y),  // Bottom left
-        egui::pos2(cap_base.x + cap_width / 2.0, cap_base.y),  // Bottom right
+        egui::pos2(cap_base.x, cap_base.y - cap_height), // Top point
+        egui::pos2(cap_base.x - cap_width / 2.0, cap_base.y), // Bottom left
+        egui::pos2(cap_base.x + cap_width / 2.0, cap_base.y), // Bottom right
     ];
-    painter.add(egui::Shape::convex_polygon(points, cap_color, egui::Stroke::new(0.8 * scale, cap_outline)));
+    painter.add(egui::Shape::convex_polygon(
+        points,
+        cap_color,
+        egui::Stroke::new(0.8 * scale, cap_outline),
+    ));
 
     // Chin strap
     let strap_color = egui::Color32::from_rgb(70, 70, 70);
     let chin_left = head_center + egui::vec2(-3.0 * scale, 2.0 * scale);
     let chin_right = head_center + egui::vec2(3.0 * scale, 2.0 * scale);
-    painter.line_segment([chin_left, chin_right], egui::Stroke::new(0.5 * scale, strap_color));
+    painter.line_segment(
+        [chin_left, chin_right],
+        egui::Stroke::new(0.5 * scale, strap_color),
+    );
 }
 
 /// Indicates what type of race bet was placed for displaying on unavailable cards
@@ -312,7 +392,12 @@ enum PlacedBetType {
 }
 
 /// Helper function to draw a mini leg bet card (camel silhouette on top, value on bottom)
-pub fn draw_mini_leg_bet_card(painter: &egui::Painter, rect: egui::Rect, camel_color: CamelColor, value: u8) {
+pub fn draw_mini_leg_bet_card(
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    camel_color: CamelColor,
+    value: u8,
+) {
     let color = camel_color_to_egui(camel_color);
     let border_color = egui::Color32::from_rgb(
         (color.r() as f32 * 0.5) as u8,
@@ -325,27 +410,31 @@ pub fn draw_mini_leg_bet_card(painter: &egui::Painter, rect: egui::Rect, camel_c
     painter.rect_filled(rect, 2.0, egui::Color32::from_rgb(245, 235, 215));
 
     // Split into top (camel) and bottom (value)
-    let top_half = egui::Rect::from_min_max(
-        rect.min,
-        egui::pos2(rect.max.x, rect.center().y + 2.0)
-    );
-    let bottom_half = egui::Rect::from_min_max(
-        egui::pos2(rect.min.x, rect.center().y + 2.0),
-        rect.max
-    );
+    let top_half =
+        egui::Rect::from_min_max(rect.min, egui::pos2(rect.max.x, rect.center().y + 2.0));
+    let bottom_half =
+        egui::Rect::from_min_max(egui::pos2(rect.min.x, rect.center().y + 2.0), rect.max);
 
     // Top half - cream for camel
-    painter.rect_filled(top_half.shrink(1.0), 1.0, egui::Color32::from_rgb(250, 245, 230));
+    painter.rect_filled(
+        top_half.shrink(1.0),
+        1.0,
+        egui::Color32::from_rgb(250, 245, 230),
+    );
 
     // Draw camel silhouette
     let camel_rect = egui::Rect::from_min_size(
         top_half.min + egui::vec2(2.0, 2.0),
-        egui::vec2(top_half.width() - 4.0, top_half.height() - 4.0)
+        egui::vec2(top_half.width() - 4.0, top_half.height() - 4.0),
     );
     draw_camel_silhouette(painter, camel_rect, color, border_color);
 
     // Bottom half - cream background with gold coin
-    painter.rect_filled(bottom_half.shrink(1.0), 1.0, egui::Color32::from_rgb(250, 245, 230));
+    painter.rect_filled(
+        bottom_half.shrink(1.0),
+        1.0,
+        egui::Color32::from_rgb(250, 245, 230),
+    );
 
     // Draw gold coin with value
     let coin_center = bottom_half.center();
@@ -357,13 +446,25 @@ pub fn draw_mini_leg_bet_card(painter: &egui::Painter, rect: egui::Rect, camel_c
     let gold_outline = egui::Color32::from_rgb(0x6B, 0x4A, 0x1A);
 
     // Outer shadow/depth
-    painter.circle_filled(coin_center + egui::vec2(1.0, 1.0), coin_radius, gold_outline);
+    painter.circle_filled(
+        coin_center + egui::vec2(1.0, 1.0),
+        coin_radius,
+        gold_outline,
+    );
     // Main coin body
     painter.circle_filled(coin_center, coin_radius, gold_light);
     // Inner shadow ring for depth
-    painter.circle_stroke(coin_center, coin_radius * 0.85, egui::Stroke::new(1.0, gold_dark));
+    painter.circle_stroke(
+        coin_center,
+        coin_radius * 0.85,
+        egui::Stroke::new(1.0, gold_dark),
+    );
     // Outer edge
-    painter.circle_stroke(coin_center, coin_radius, egui::Stroke::new(1.5, gold_outline));
+    painter.circle_stroke(
+        coin_center,
+        coin_radius,
+        egui::Stroke::new(1.5, gold_outline),
+    );
 
     // Value text on coin
     painter.text(
@@ -377,7 +478,12 @@ pub fn draw_mini_leg_bet_card(painter: &egui::Painter, rect: egui::Rect, camel_c
 
 /// Helper function to draw a tiny leg bet indicator for player's bet collection
 /// Smaller than draw_mini_leg_bet_card, designed for overlapping display
-pub fn draw_mini_leg_bet_indicator(painter: &egui::Painter, rect: egui::Rect, camel_color: CamelColor, value: u8) {
+pub fn draw_mini_leg_bet_indicator(
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    camel_color: CamelColor,
+    value: u8,
+) {
     let color = camel_color_to_egui(camel_color);
 
     // Card border/shadow
@@ -406,8 +512,14 @@ pub fn draw_pyramid_token_icon(painter: &egui::Painter, center: egui::Pos2, size
     let pyramid_width = size * 0.7;
 
     let apex = egui::pos2(center.x, center.y - pyramid_height / 2.0);
-    let base_left = egui::pos2(center.x - pyramid_width / 2.0, center.y + pyramid_height / 2.0);
-    let base_right = egui::pos2(center.x + pyramid_width / 2.0, center.y + pyramid_height / 2.0);
+    let base_left = egui::pos2(
+        center.x - pyramid_width / 2.0,
+        center.y + pyramid_height / 2.0,
+    );
+    let base_right = egui::pos2(
+        center.x + pyramid_width / 2.0,
+        center.y + pyramid_height / 2.0,
+    );
     let mid_base = egui::pos2(center.x, center.y + pyramid_height / 2.0);
 
     // Gold/sand colored pyramid token
@@ -462,7 +574,10 @@ pub fn draw_pyramid_button(
 
     // Hover effect - brighten colors
     let (light, dark) = if response.hovered() {
-        (egui::Color32::from_rgb(0xE4, 0xB8, 0x5B), egui::Color32::from_rgb(0xB0, 0x8A, 0x40))
+        (
+            egui::Color32::from_rgb(0xE4, 0xB8, 0x5B),
+            egui::Color32::from_rgb(0xB0, 0x8A, 0x40),
+        )
     } else {
         (pyramid_light, pyramid_dark)
     };
@@ -589,7 +704,13 @@ pub fn draw_spectator_tile_card(
     let clipped_painter = painter.with_clip_rect(clip_rect);
 
     // Draw full card content at normal size - clipping creates the flip effect
-    draw_spectator_tile_content(&clipped_painter, rect, character_id, player_color, showing_oasis);
+    draw_spectator_tile_content(
+        &clipped_painter,
+        rect,
+        character_id,
+        player_color,
+        showing_oasis,
+    );
 }
 
 /// Helper function to draw spectator tile card content at full size (used with clipping for flip effect)
@@ -604,15 +725,15 @@ fn draw_spectator_tile_content(
     let (bg_color, _value_color, value_text) = if showing_oasis {
         // Oasis (+1): Green/lush colors
         (
-            egui::Color32::from_rgb(80, 160, 80),   // Green
-            egui::Color32::from_rgb(50, 120, 50),   // Dark green
+            egui::Color32::from_rgb(80, 160, 80), // Green
+            egui::Color32::from_rgb(50, 120, 50), // Dark green
             "+1",
         )
     } else {
         // Mirage (-1): Sandy/orange colors
         (
-            egui::Color32::from_rgb(200, 150, 80),  // Sandy
-            egui::Color32::from_rgb(160, 100, 40),  // Dark sandy
+            egui::Color32::from_rgb(200, 150, 80), // Sandy
+            egui::Color32::from_rgb(160, 100, 40), // Dark sandy
             "-1",
         )
     };
@@ -624,24 +745,22 @@ fn draw_spectator_tile_content(
     painter.rect_filled(rect, 4.0, egui::Color32::from_rgb(245, 235, 215));
 
     // Split into top (avatar) and bottom (value)
-    let top_half = egui::Rect::from_min_max(
-        rect.min,
-        egui::pos2(rect.max.x, rect.center().y + 4.0),
-    );
-    let bottom_half = egui::Rect::from_min_max(
-        egui::pos2(rect.min.x, rect.center().y + 4.0),
-        rect.max,
-    );
+    let top_half =
+        egui::Rect::from_min_max(rect.min, egui::pos2(rect.max.x, rect.center().y + 4.0));
+    let bottom_half =
+        egui::Rect::from_min_max(egui::pos2(rect.min.x, rect.center().y + 4.0), rect.max);
 
     // Top half - cream background with avatar
-    painter.rect_filled(top_half.shrink(2.0), 2.0, egui::Color32::from_rgb(250, 245, 230));
+    painter.rect_filled(
+        top_half.shrink(2.0),
+        2.0,
+        egui::Color32::from_rgb(250, 245, 230),
+    );
 
     // Draw player avatar in top portion at full size
     let avatar_size = (top_half.height() - 8.0).min(top_half.width() - 8.0);
-    let avatar_rect = egui::Rect::from_center_size(
-        top_half.center(),
-        egui::vec2(avatar_size, avatar_size),
-    );
+    let avatar_rect =
+        egui::Rect::from_center_size(top_half.center(), egui::vec2(avatar_size, avatar_size));
     draw_avatar(painter, avatar_rect, character_id, Some(player_color));
 
     // Bottom half - colored band with value
@@ -684,7 +803,7 @@ fn draw_spectator_tile_content(
 
 /// Draw a flip/sync icon (two curved arrows) for the spectator tile flip button
 fn draw_flip_icon(painter: &egui::Painter, center: egui::Pos2, size: f32, color: egui::Color32) {
-    let r = size * 0.38;  // Radius of the circular path
+    let r = size * 0.38; // Radius of the circular path
     let stroke = egui::Stroke::new(size * 0.12, color);
     let arrow_size = size * 0.15;
 
@@ -692,8 +811,10 @@ fn draw_flip_icon(painter: &egui::Painter, center: egui::Pos2, size: f32, color:
     // Top arc (right half of circle, pointing right)
     let segments = 8;
     for i in 0..segments {
-        let angle1 = std::f32::consts::PI * 0.15 + (i as f32 / segments as f32) * std::f32::consts::PI * 0.7;
-        let angle2 = std::f32::consts::PI * 0.15 + ((i + 1) as f32 / segments as f32) * std::f32::consts::PI * 0.7;
+        let angle1 =
+            std::f32::consts::PI * 0.15 + (i as f32 / segments as f32) * std::f32::consts::PI * 0.7;
+        let angle2 = std::f32::consts::PI * 0.15
+            + ((i + 1) as f32 / segments as f32) * std::f32::consts::PI * 0.7;
         let p1 = center + egui::vec2(r * angle1.cos(), -r * angle1.sin());
         let p2 = center + egui::vec2(r * angle2.cos(), -r * angle2.sin());
         painter.line_segment([p1, p2], stroke);
@@ -701,8 +822,10 @@ fn draw_flip_icon(painter: &egui::Painter, center: egui::Pos2, size: f32, color:
 
     // Bottom arc (left half of circle, pointing left)
     for i in 0..segments {
-        let angle1 = std::f32::consts::PI * 1.15 + (i as f32 / segments as f32) * std::f32::consts::PI * 0.7;
-        let angle2 = std::f32::consts::PI * 1.15 + ((i + 1) as f32 / segments as f32) * std::f32::consts::PI * 0.7;
+        let angle1 =
+            std::f32::consts::PI * 1.15 + (i as f32 / segments as f32) * std::f32::consts::PI * 0.7;
+        let angle2 = std::f32::consts::PI * 1.15
+            + ((i + 1) as f32 / segments as f32) * std::f32::consts::PI * 0.7;
         let p1 = center + egui::vec2(r * angle1.cos(), -r * angle1.sin());
         let p2 = center + egui::vec2(r * angle2.cos(), -r * angle2.sin());
         painter.line_segment([p1, p2], stroke);
@@ -711,22 +834,34 @@ fn draw_flip_icon(painter: &egui::Painter, center: egui::Pos2, size: f32, color:
     // Arrow head on top arc (pointing right/down)
     let top_arrow_pos = center + egui::vec2(r * 0.85, -r * 0.5);
     painter.line_segment(
-        [top_arrow_pos, top_arrow_pos + egui::vec2(-arrow_size, -arrow_size * 0.5)],
+        [
+            top_arrow_pos,
+            top_arrow_pos + egui::vec2(-arrow_size, -arrow_size * 0.5),
+        ],
         stroke,
     );
     painter.line_segment(
-        [top_arrow_pos, top_arrow_pos + egui::vec2(-arrow_size * 0.3, arrow_size)],
+        [
+            top_arrow_pos,
+            top_arrow_pos + egui::vec2(-arrow_size * 0.3, arrow_size),
+        ],
         stroke,
     );
 
     // Arrow head on bottom arc (pointing left/up)
     let bottom_arrow_pos = center + egui::vec2(-r * 0.85, r * 0.5);
     painter.line_segment(
-        [bottom_arrow_pos, bottom_arrow_pos + egui::vec2(arrow_size, arrow_size * 0.5)],
+        [
+            bottom_arrow_pos,
+            bottom_arrow_pos + egui::vec2(arrow_size, arrow_size * 0.5),
+        ],
         stroke,
     );
     painter.line_segment(
-        [bottom_arrow_pos, bottom_arrow_pos + egui::vec2(arrow_size * 0.3, -arrow_size)],
+        [
+            bottom_arrow_pos,
+            bottom_arrow_pos + egui::vec2(arrow_size * 0.3, -arrow_size),
+        ],
         stroke,
     );
 
@@ -752,7 +887,11 @@ fn draw_race_bet_card(
 
     // Card shadow
     let shadow_rect = rect.translate(egui::vec2(2.0, 2.0));
-    painter.rect_filled(shadow_rect, 6.0, egui::Color32::from_rgba_unmultiplied(0, 0, 0, 60));
+    painter.rect_filled(
+        shadow_rect,
+        6.0,
+        egui::Color32::from_rgba_unmultiplied(0, 0, 0, 60),
+    );
 
     // Card border
     painter.rect_filled(rect.expand(2.0), 6.0, border_color);
@@ -784,19 +923,29 @@ fn draw_race_bet_card(
 
     // Hover glow effect
     if hovered {
-        painter.rect_stroke(rect.expand(3.0), 6.0, egui::Stroke::new(3.0, egui::Color32::GOLD), egui::epaint::StrokeKind::Outside);
+        painter.rect_stroke(
+            rect.expand(3.0),
+            6.0,
+            egui::Stroke::new(3.0, egui::Color32::GOLD),
+            egui::epaint::StrokeKind::Outside,
+        );
     }
 }
 
 /// Helper function to draw an unavailable/used race bet card
 /// Shows a camel with crown (winner bet) or dunce cap (loser bet) instead of an X
-fn draw_race_bet_card_unavailable(painter: &egui::Painter, rect: egui::Rect, camel_color: CamelColor, placed_bet: PlacedBetType) {
+fn draw_race_bet_card_unavailable(
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    camel_color: CamelColor,
+    placed_bet: PlacedBetType,
+) {
     let color = camel_color_to_egui(camel_color);
     let faded_color = egui::Color32::from_rgba_unmultiplied(
         color.r(),
         color.g(),
         color.b(),
-        100,  // Slightly more visible than before since we're showing content
+        100, // Slightly more visible than before since we're showing content
     );
     let border_color = egui::Color32::from_rgba_unmultiplied(
         (color.r() as f32 * 0.5) as u8,
@@ -813,7 +962,7 @@ fn draw_race_bet_card_unavailable(painter: &egui::Painter, rect: egui::Rect, cam
 
     // Draw camel silhouette with crown or dunce cap based on bet type
     let icon_rect = egui::Rect::from_center_size(
-        rect.center() + egui::vec2(0.0, -5.0),  // Shift up slightly to make room for label
+        rect.center() + egui::vec2(0.0, -5.0), // Shift up slightly to make room for label
         egui::vec2(rect.width() * 0.7, rect.height() * 0.55),
     );
 
@@ -862,8 +1011,8 @@ pub enum MobileTab {
 /// Animation state for die being rolled from pyramid
 #[derive(Clone, Copy)]
 pub struct DieRollAnimation {
-    pub die_color: Option<CamelColor>,  // None = crazy die (gray)
-    pub start_time: f64,                // When animation started (seconds)
+    pub die_color: Option<CamelColor>, // None = crazy die (gray)
+    pub start_time: f64,               // When animation started (seconds)
 }
 
 /// Phase of card flight animation
@@ -880,8 +1029,8 @@ pub enum CardFlightPhase {
 pub struct CardFlightAnimation {
     pub color: CamelColor,
     pub value: u8,
-    pub start_pos: egui::Pos2,      // Card stack position (screen coords)
-    pub end_pos: egui::Pos2,        // Player panel edge
+    pub start_pos: egui::Pos2, // Card stack position (screen coords)
+    pub end_pos: egui::Pos2,   // Player panel edge
     pub start_time: f64,
     pub phase: CardFlightPhase,
 }
@@ -889,46 +1038,51 @@ pub struct CardFlightAnimation {
 /// UI state for showing different panels
 #[derive(Resource)]
 pub struct UiState {
-    pub show_winner_betting: bool,   // Show winner bet modal
-    pub show_loser_betting: bool,    // Show loser bet modal
+    pub show_winner_betting: bool, // Show winner bet modal
+    pub show_loser_betting: bool,  // Show loser bet modal
     pub show_spectator_tile: bool,
-    pub spectator_tile_space: Option<u8>,  // Selected space for spectator tile
-    pub spectator_tile_is_oasis: bool,     // Current side of spectator tile card (true = oasis +1)
-    pub spectator_tile_flip_anim: f32,     // Animation progress for card flip (0.0 to 1.0)
-    pub spectator_tile_selected: bool,     // Whether spectator tile card is selected for placement (mobile)
+    pub spectator_tile_space: Option<u8>, // Selected space for spectator tile
+    pub spectator_tile_is_oasis: bool,    // Current side of spectator tile card (true = oasis +1)
+    pub spectator_tile_flip_anim: f32,    // Animation progress for card flip (0.0 to 1.0)
+    pub spectator_tile_selected: bool, // Whether spectator tile card is selected for placement (mobile)
     pub last_roll: Option<LastRoll>,
-    pub dice_popup_delay: f32,          // Delay before showing popup (waits for shake animation)
-    pub dice_popup_timer: f32,          // Timer for dice result popup fade
-    pub show_leg_scoring: bool,         // Show leg scoring modal
-    pub show_rules: bool,               // Show game rules modal
-    pub initial_rolls_complete: bool,   // Whether initial setup rolls have finished
+    pub dice_popup_delay: f32, // Delay before showing popup (waits for shake animation)
+    pub dice_popup_timer: f32, // Timer for dice result popup fade
+    pub show_leg_scoring: bool, // Show leg scoring modal
+    pub leg_scoring_delay: f32, // Delay timer before showing leg scoring modal (800ms)
+    pub game_end_delay: f32,   // Delay timer before transitioning to GameEnd state (800ms)
+    pub show_rules: bool,      // Show game rules modal
+    pub initial_rolls_complete: bool, // Whether initial setup rolls have finished
     pub exit_fullscreen_requested: bool, // Request to exit fullscreen mode
     pub enter_fullscreen_requested: bool, // Request to enter fullscreen mode
-    pub use_side_panels: bool,          // Layout mode: true = side panels (landscape), false = top/bottom (portrait)
+    pub use_side_panels: bool, // Layout mode: true = side panels (landscape), false = top/bottom (portrait)
     pub game_board_rect: Option<egui::Rect>, // Measured game board area from CentralPanel
     #[allow(dead_code)]
-    pub mobile_tab: MobileTab,          // Current tab in mobile view (deprecated)
-    pub die_roll_animation: Option<DieRollAnimation>,  // Animation for die being selected/rolled
-    pub pyramid_flip_anim: f32,  // 0.0 = not animating, 0.01-1.0 = flip in progress
-    pub card_flight_animation: Option<CardFlightAnimation>,  // Animation for leg bet card flying to player
-    pub leg_bet_card_positions: [Option<egui::Pos2>; 5],  // Screen positions of leg bet card stacks (indexed by CamelColor)
-    pub player_bet_area_pos: Option<egui::Pos2>,  // Screen position where player's bets are displayed
-    pub show_debug_overlay: bool,  // Show debug overlay with window dimensions
+    pub mobile_tab: MobileTab, // Current tab in mobile view (deprecated)
+    pub die_roll_animation: Option<DieRollAnimation>, // Animation for die being selected/rolled
+    pub pyramid_flip_anim: f32, // 0.0 = not animating, 0.01-1.0 = flip in progress
+    pub card_flight_animation: Option<CardFlightAnimation>, // Animation for leg bet card flying to player
+    pub leg_bet_card_positions: [Option<egui::Pos2>; 5], // Screen positions of leg bet card stacks (indexed by CamelColor)
+    pub player_bet_area_pos: Option<egui::Pos2>, // Screen position where player's bets are displayed
+    pub show_debug_overlay: bool,                // Show debug overlay with window dimensions
+    pub standings_panel_bottom: f32, // Y position of bottom of standings panel (for toast positioning)
 }
 
 /// Animated position entry for the camel positions panel
 #[derive(Clone, Copy)]
 pub struct AnimatedCamelPosition {
     pub color: CamelColor,
-    pub current_y_offset: f32,  // Current Y position offset for animation
-    pub target_y_offset: f32,   // Target Y position (0 = at rank position)
+    pub current_y_offset: f32, // Current Y position offset for horizontal slide animation
+    pub target_y_offset: f32,  // Target Y position (0 = at rank position)
+    pub current_podium_y: f32, // Current vertical offset for podium (negative = up)
+    pub target_podium_y: f32,  // Target vertical offset for podium
 }
 
 /// Resource for tracking camel position animations in UI
 #[derive(Resource, Default)]
 pub struct CamelPositionAnimations {
     pub positions: Vec<AnimatedCamelPosition>,
-    pub last_order: Vec<CamelColor>,  // Previous frame's order for detecting changes
+    pub last_order: Vec<CamelColor>, // Previous frame's order for detecting changes
 }
 
 impl Default for UiState {
@@ -938,18 +1092,20 @@ impl Default for UiState {
             show_loser_betting: false,
             show_spectator_tile: false,
             spectator_tile_space: None,
-            spectator_tile_is_oasis: true,  // Start with oasis side (+1)
+            spectator_tile_is_oasis: true, // Start with oasis side (+1)
             spectator_tile_flip_anim: 0.0,
             spectator_tile_selected: false,
             last_roll: None,
             dice_popup_delay: 0.0,
             dice_popup_timer: 0.0,
             show_leg_scoring: false,
+            leg_scoring_delay: 0.0,
+            game_end_delay: 0.0,
             show_rules: false,
             initial_rolls_complete: false,
             exit_fullscreen_requested: false,
             enter_fullscreen_requested: false,
-            use_side_panels: true,  // Default to side panels (landscape)
+            use_side_panels: true, // Default to side panels (landscape)
             game_board_rect: None,
             mobile_tab: MobileTab::default(),
             die_roll_animation: None,
@@ -958,6 +1114,7 @@ impl Default for UiState {
             leg_bet_card_positions: [None; 5],
             player_bet_area_pos: None,
             show_debug_overlay: false,
+            standings_panel_bottom: 0.0,
         }
     }
 }
@@ -983,21 +1140,38 @@ pub fn game_hud_ui(
         MessageWriter<PlaceRaceBetAction>,
         MessageWriter<PlaceSpectatorTileAction>,
     ),
-    camels: Query<(&Camel, &BoardPosition)>,
-    crazy_camels: Query<(&CrazyCamel, &BoardPosition)>,
+    camels: Query<(&Camel, &BoardPosition), Without<PendingInitialMove>>,
+    crazy_camels: Query<(&CrazyCamel, &BoardPosition), Without<PendingInitialMove>>,
     mut next_state: ResMut<NextState<GameState>>,
     mut windows: Query<&mut Window>,
     time: Res<Time>,
+    mut initial_rolls: Option<ResMut<crate::systems::setup::InitialSetupRolls>>,
 ) {
-    let (players, pyramid, leg_tiles, turn_state, placed_tiles, player_leg_bets, player_pyramid_tokens, race_bets) = game_resources;
-    let (mut roll_action, mut leg_bet_action, mut race_bet_action, mut spectator_tile_action) = actions;
+    let (
+        players,
+        pyramid,
+        leg_tiles,
+        turn_state,
+        placed_tiles,
+        player_leg_bets,
+        player_pyramid_tokens,
+        race_bets,
+    ) = game_resources;
+    let (mut roll_action, mut leg_bet_action, mut race_bet_action, mut spectator_tile_action) =
+        actions;
     let Some(players) = players else { return };
     let Some(pyramid) = pyramid else { return };
     let Some(leg_tiles) = leg_tiles else { return };
     let Some(turn_state) = turn_state else { return };
-    let Some(placed_tiles) = placed_tiles else { return };
-    let Some(player_leg_bets) = player_leg_bets else { return };
-    let Some(player_pyramid_tokens) = player_pyramid_tokens else { return };
+    let Some(placed_tiles) = placed_tiles else {
+        return;
+    };
+    let Some(player_leg_bets) = player_leg_bets else {
+        return;
+    };
+    let Some(player_pyramid_tokens) = player_pyramid_tokens else {
+        return;
+    };
     let Some(race_bets) = race_bets else { return };
     let Ok(ctx) = contexts.ctx_mut() else { return };
 
@@ -1006,7 +1180,12 @@ pub fn game_hud_ui(
         rules_state.is_open = true;
         ui_state.show_rules = false;
     }
-    draw_rules_ui(ctx, &mut rules_state, !ui_state.use_side_panels, time.delta_secs());
+    draw_rules_ui(
+        ctx,
+        &mut rules_state,
+        !ui_state.use_side_panels,
+        time.delta_secs(),
+    );
 
     // Debug overlay - show window dimensions in top left (only in debug builds)
     #[cfg(debug_assertions)]
@@ -1022,7 +1201,9 @@ pub fn game_hud_ui(
                             egui::RichText::new(text)
                                 .size(12.0)
                                 .color(egui::Color32::from_rgba_unmultiplied(255, 255, 255, 180))
-                                .background_color(egui::Color32::from_rgba_unmultiplied(0, 0, 0, 120))
+                                .background_color(egui::Color32::from_rgba_unmultiplied(
+                                    0, 0, 0, 120,
+                                )),
                         );
                     }
                 });
@@ -1054,17 +1235,37 @@ pub fn game_hud_ui(
                 let rounding = 3.0;
                 let current_time = time.elapsed_secs_f64();
                 for die in pyramid.dice.iter() {
-                    let (rect, _) = ui.allocate_exact_size(egui::vec2(token_size - overlap, token_size), egui::Sense::hover());
-                    let die_rect = egui::Rect::from_center_size(rect.center(), egui::vec2(token_size - 2.0, token_size - 2.0));
+                    let (rect, _) = ui.allocate_exact_size(
+                        egui::vec2(token_size - overlap, token_size),
+                        egui::Sense::hover(),
+                    );
+                    let die_rect = egui::Rect::from_center_size(
+                        rect.center(),
+                        egui::vec2(token_size - 2.0, token_size - 2.0),
+                    );
                     match die {
                         PyramidDie::Regular(regular) => {
                             let color = camel_color_to_egui(regular.color);
                             ui.painter().rect_filled(die_rect, rounding, color);
-                            ui.painter().rect_stroke(die_rect, rounding, egui::Stroke::new(1.0, egui::Color32::BLACK), egui::epaint::StrokeKind::Outside);
+                            ui.painter().rect_stroke(
+                                die_rect,
+                                rounding,
+                                egui::Stroke::new(1.0, egui::Color32::BLACK),
+                                egui::epaint::StrokeKind::Outside,
+                            );
                         }
                         PyramidDie::Crazy { .. } => {
-                            ui.painter().rect_filled(die_rect, rounding, egui::Color32::from_rgb(100, 100, 100));
-                            ui.painter().rect_stroke(die_rect, rounding, egui::Stroke::new(1.0, egui::Color32::BLACK), egui::epaint::StrokeKind::Outside);
+                            ui.painter().rect_filled(
+                                die_rect,
+                                rounding,
+                                egui::Color32::from_rgb(100, 100, 100),
+                            );
+                            ui.painter().rect_stroke(
+                                die_rect,
+                                rounding,
+                                egui::Stroke::new(1.0, egui::Color32::BLACK),
+                                egui::epaint::StrokeKind::Outside,
+                            );
                         }
                     }
                 }
@@ -1073,7 +1274,10 @@ pub fn game_hud_ui(
                     let elapsed = (current_time - anim.start_time) as f32;
                     let anim_duration = 0.4; // Total animation duration
                     if elapsed < anim_duration {
-                        let (rect, _) = ui.allocate_exact_size(egui::vec2(token_size - overlap, token_size), egui::Sense::hover());
+                        let (rect, _) = ui.allocate_exact_size(
+                            egui::vec2(token_size - overlap, token_size),
+                            egui::Sense::hover(),
+                        );
                         // Shake phase (0-0.2s), then drop phase (0.2-0.4s)
                         let (shake_offset, drop_offset, scale, alpha) = if elapsed < 0.2 {
                             // Shake phase
@@ -1082,7 +1286,12 @@ pub fn game_hud_ui(
                         } else {
                             // Drop phase
                             let drop_progress = (elapsed - 0.2) / 0.2;
-                            (0.0, drop_progress * 20.0, 1.0 - drop_progress * 0.3, 1.0 - drop_progress)
+                            (
+                                0.0,
+                                drop_progress * 20.0,
+                                1.0 - drop_progress * 0.3,
+                                1.0 - drop_progress,
+                            )
                         };
                         let size = (token_size - 2.0) * scale;
                         let center = rect.center() + egui::vec2(shake_offset, drop_offset);
@@ -1092,11 +1301,26 @@ pub fn game_hud_ui(
                             None => egui::Color32::from_rgb(100, 100, 100), // Crazy die
                         };
                         let color = egui::Color32::from_rgba_unmultiplied(
-                            base_color.r(), base_color.g(), base_color.b(),
-                            (255.0 * alpha) as u8
+                            base_color.r(),
+                            base_color.g(),
+                            base_color.b(),
+                            (255.0 * alpha) as u8,
                         );
                         ui.painter().rect_filled(die_rect, rounding * scale, color);
-                        ui.painter().rect_stroke(die_rect, rounding * scale, egui::Stroke::new(1.0, egui::Color32::from_rgba_unmultiplied(0, 0, 0, (255.0 * alpha) as u8)), egui::epaint::StrokeKind::Outside);
+                        ui.painter().rect_stroke(
+                            die_rect,
+                            rounding * scale,
+                            egui::Stroke::new(
+                                1.0,
+                                egui::Color32::from_rgba_unmultiplied(
+                                    0,
+                                    0,
+                                    0,
+                                    (255.0 * alpha) as u8,
+                                ),
+                            ),
+                            egui::epaint::StrokeKind::Outside,
+                        );
                     }
                 }
                 ui.add_space(4.0);
@@ -1108,7 +1332,10 @@ pub fn game_hud_ui(
                             ui.label(format!("Last roll: {:?} moved {} spaces", color, value));
                         }
                         LastRoll::Crazy(color, value) => {
-                            ui.label(format!("Last roll: {:?} crazy camel moved {} backwards!", color, value));
+                            ui.label(format!(
+                                "Last roll: {:?} crazy camel moved {} backwards!",
+                                color, value
+                            ));
                         }
                     }
                 }
@@ -1124,14 +1351,20 @@ pub fn game_hud_ui(
                     if desert_button(ui, "Menu", &small_style).clicked() {
                         next_state.set(GameState::MainMenu);
                     }
-                    if desert_button(ui, "?", &compact_style).on_hover_text("How to Play").clicked() {
+                    if desert_button(ui, "?", &compact_style)
+                        .on_hover_text("How to Play")
+                        .clicked()
+                    {
                         ui_state.show_rules = true;
                     }
                 } else {
                     if desert_button(ui, "Back to Menu", &small_style).clicked() {
                         next_state.set(GameState::MainMenu);
                     }
-                    if desert_button(ui, "?", &compact_style).on_hover_text("How to Play").clicked() {
+                    if desert_button(ui, "?", &compact_style)
+                        .on_hover_text("How to Play")
+                        .clicked()
+                    {
                         ui_state.show_rules = true;
                     }
                 }
@@ -1141,7 +1374,11 @@ pub fn game_hud_ui(
                     if let Ok(window) = windows.single() {
                         let is_fullscreen = window.mode != WindowMode::Windowed;
                         let btn_text = {
-                            if !ui_state.use_side_panels { "⛶" } else { "Fullscreen" }
+                            if !ui_state.use_side_panels {
+                                "⛶"
+                            } else {
+                                "Fullscreen"
+                            }
                         };
                         if desert_button(ui, btn_text, &small_style).clicked() {
                             if is_fullscreen {
@@ -1186,18 +1423,46 @@ pub fn game_hud_ui(
     if ui_state.use_side_panels {
         // Landscape layout - side panels
         render_desktop_ui(
-            ctx, &players, &pyramid, &leg_tiles, &turn_state, &*placed_tiles,
-            &player_leg_bets, &player_pyramid_tokens, &race_bets, &mut ui_state,
-            &camel_animations, &mut roll_action, &mut leg_bet_action,
-            &mut race_bet_action, &mut spectator_tile_action, &camels, current_player_color,
+            ctx,
+            &players,
+            &pyramid,
+            &leg_tiles,
+            &turn_state,
+            &*placed_tiles,
+            &player_leg_bets,
+            &player_pyramid_tokens,
+            &race_bets,
+            &mut ui_state,
+            &camel_animations,
+            &mut roll_action,
+            &mut leg_bet_action,
+            &mut race_bet_action,
+            &mut spectator_tile_action,
+            &camels,
+            current_player_color,
+            &mut initial_rolls,
         );
     } else {
         // Portrait layout - top/bottom panels
         render_mobile_ui(
-            ctx, &players, &pyramid, &leg_tiles, &turn_state, &*placed_tiles,
-            &player_leg_bets, &player_pyramid_tokens, &race_bets, &mut ui_state,
-            &camel_animations, &mut roll_action, &mut leg_bet_action,
-            &mut race_bet_action, &mut spectator_tile_action, &camels, current_player_color,
+            ctx,
+            &players,
+            &pyramid,
+            &leg_tiles,
+            &turn_state,
+            &*placed_tiles,
+            &player_leg_bets,
+            &player_pyramid_tokens,
+            &race_bets,
+            &mut ui_state,
+            &camel_animations,
+            &mut roll_action,
+            &mut leg_bet_action,
+            &mut race_bet_action,
+            &mut spectator_tile_action,
+            &camels,
+            current_player_color,
+            &mut initial_rolls,
         );
     }
 
@@ -1210,8 +1475,16 @@ pub fn game_hud_ui(
 
     // Shared popup windows (race betting, spectator tile placement, dice result)
     render_popup_windows(
-        ctx, &*players, &*placed_tiles, &*race_bets, &mut *ui_state, &mut race_bet_action,
-        &mut spectator_tile_action, &camels, &crazy_camels, current_player_color,
+        ctx,
+        &*players,
+        &*placed_tiles,
+        &*race_bets,
+        &mut *ui_state,
+        &mut race_bet_action,
+        &mut spectator_tile_action,
+        &camels,
+        &crazy_camels,
+        current_player_color,
     );
 
     // Card flight animation overlay (drawn on top of everything)
@@ -1261,7 +1534,8 @@ fn render_card_flight_animation(ctx: &egui::Context, ui_state: &mut UiState, cur
                             anim.start_pos.x + (anim.end_pos.x - anim.start_pos.x) * ease_t,
                             anim.start_pos.y + (anim.end_pos.y - anim.start_pos.y) * ease_t,
                         );
-                        let rect = egui::Rect::from_center_size(pos, egui::vec2(card_width, card_height));
+                        let rect =
+                            egui::Rect::from_center_size(pos, egui::vec2(card_width, card_height));
                         draw_mini_leg_bet_card(painter, rect, anim.color, anim.value);
                     }
                     CardFlightPhase::DisappearingUnder => {
@@ -1273,10 +1547,26 @@ fn render_card_flight_animation(ctx: &egui::Context, ui_state: &mut UiState, cur
                         let rect = egui::Rect::from_center_size(anim.end_pos, size);
 
                         // Draw faded card
-                        let faded_color = egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha);
-                        painter.rect_filled(rect.expand(1.0), 3.0, egui::Color32::from_rgba_unmultiplied(60, 50, 40, alpha));
-                        painter.rect_filled(rect, 2.0, egui::Color32::from_rgba_unmultiplied(245, 235, 215, alpha));
-                        let top_half = egui::Rect::from_min_max(rect.min, egui::pos2(rect.max.x, rect.center().y));
+                        let faded_color = egui::Color32::from_rgba_unmultiplied(
+                            color.r(),
+                            color.g(),
+                            color.b(),
+                            alpha,
+                        );
+                        painter.rect_filled(
+                            rect.expand(1.0),
+                            3.0,
+                            egui::Color32::from_rgba_unmultiplied(60, 50, 40, alpha),
+                        );
+                        painter.rect_filled(
+                            rect,
+                            2.0,
+                            egui::Color32::from_rgba_unmultiplied(245, 235, 215, alpha),
+                        );
+                        let top_half = egui::Rect::from_min_max(
+                            rect.min,
+                            egui::pos2(rect.max.x, rect.center().y),
+                        );
                         painter.rect_filled(top_half.shrink(1.0), 1.0, faded_color);
                     }
                     CardFlightPhase::ReappearingInside => {
@@ -1296,22 +1586,6 @@ fn render_card_flight_animation(ctx: &egui::Context, ui_state: &mut UiState, cur
         if phase == CardFlightPhase::Done {
             ui_state.card_flight_animation = None;
         }
-    }
-}
-
-/// Helper function to determine players per row for adaptive layout
-/// Takes available_width to prevent overflow on narrow screens
-fn mobile_players_per_row(count: usize, available_width: f32) -> usize {
-    // Minimum card width ~80px for readability
-    let max_fit = (available_width / 80.0).floor() as usize;
-
-    match count {
-        2 => 2,
-        3 => 3.min(max_fit),
-        4 => 2,  // Always 2x2 grid for 4 players
-        5 | 6 => if max_fit >= 3 { 3 } else { 2 },
-        7 | 8 => if max_fit >= 4 { 4 } else if max_fit >= 3 { 3 } else { 2 },
-        _ => max_fit.max(2).min(4),  // Default: fit what we can, 2-4 range
     }
 }
 
@@ -1336,25 +1610,34 @@ fn render_mobile_ui(
     leg_bet_action: &mut MessageWriter<TakeLegBetAction>,
     _race_bet_action: &mut MessageWriter<PlaceRaceBetAction>,
     _spectator_tile_action: &mut MessageWriter<PlaceSpectatorTileAction>,
-    _camels: &Query<(&Camel, &BoardPosition)>,
+    _camels: &Query<(&Camel, &BoardPosition), Without<PendingInitialMove>>,
     current_player_color: egui::Color32,
+    initial_rolls: &mut Option<ResMut<crate::systems::setup::InitialSetupRolls>>,
 ) {
     let current = players.current_player();
-    let can_act = !turn_state.action_taken && !current.is_ai && ui_state.initial_rolls_complete && !ui_state.show_leg_scoring;
+    let can_act = !turn_state.action_taken
+        && !current.is_ai
+        && ui_state.initial_rolls_complete
+        && !ui_state.show_leg_scoring;
 
     // === TOP PANEL: Player Info + Camel Standings ===
-    egui::TopBottomPanel::top("mobile_info_panel")
+    let panel_response = egui::TopBottomPanel::top("mobile_info_panel")
+        .frame(egui::Frame::new().fill(ctx.style().visuals.panel_fill))
         .show(ctx, |ui| {
             ui.add_space(2.0);
 
             // Players section with adaptive row layout
             let player_count = players.players.len();
             let available_width = ui.available_width();
-            let per_row = mobile_players_per_row(player_count, available_width);
+            let per_row = layout::players_per_row(player_count, available_width);
 
             // Helper closure to draw a single player card
             // Returns the avatar rect center if this is the current player (for animation targeting)
-            let draw_player_card = |ui: &mut egui::Ui, i: usize, player: &crate::components::PlayerData, card_width: f32| -> Option<egui::Pos2> {
+            let draw_player_card = |ui: &mut egui::Ui,
+                                    i: usize,
+                                    player: &crate::components::PlayerData,
+                                    card_width: f32|
+             -> Option<egui::Pos2> {
                 let is_current = i == players.current_player_index;
                 let player_color = PLAYER_COLORS[i % PLAYER_COLORS.len()];
 
@@ -1375,7 +1658,10 @@ fn render_mobile_ui(
                     ui.horizontal(|ui| {
                         // Avatar
                         let avatar_size = 22.0;
-                        let (rect, _) = ui.allocate_exact_size(egui::vec2(avatar_size, avatar_size), egui::Sense::hover());
+                        let (rect, _) = ui.allocate_exact_size(
+                            egui::vec2(avatar_size, avatar_size),
+                            egui::Sense::hover(),
+                        );
                         draw_avatar(ui.painter(), rect, player.character_id, Some(player_color));
 
                         // Track current player position for leg bet animation
@@ -1389,80 +1675,81 @@ fn render_mobile_ui(
                         // Leg bet mini cards (overlapping)
                         if i < player_leg_bets.bets.len() && !player_leg_bets.bets[i].is_empty() {
                             let bets = &player_leg_bets.bets[i];
-                            let card_width = 14.0;
-                            let card_height = 18.0;
-                            let overlap = 7.0;
-                            let total_width = card_width + (bets.len().saturating_sub(1) as f32 * overlap);
-                            let (total_rect, _) = ui.allocate_exact_size(
-                                egui::vec2(total_width, card_height),
-                                egui::Sense::hover()
+                            draw_overlapping_stack(
+                                ui,
+                                bets,
+                                mobile::MINI_LEG_BET_WIDTH,
+                                mobile::MINI_LEG_BET_HEIGHT,
+                                mobile::MINI_LEG_BET_OVERLAP,
+                                |painter, rect, bet| {
+                                    draw_mini_leg_bet_indicator(
+                                        painter, rect, bet.camel, bet.value,
+                                    );
+                                },
                             );
-
-                            for (j, bet) in bets.iter().enumerate() {
-                                let x_offset = j as f32 * overlap;
-                                let card_rect = egui::Rect::from_min_size(
-                                    total_rect.min + egui::vec2(x_offset, 0.0),
-                                    egui::vec2(card_width, card_height)
-                                );
-                                draw_mini_leg_bet_indicator(ui.painter(), card_rect, bet.camel, bet.value);
-                            }
                         }
 
                         // Pyramid tokens (compact)
-                        if i < player_pyramid_tokens.counts.len() && player_pyramid_tokens.counts[i] > 0 {
-                            let token_count = player_pyramid_tokens.counts[i];
-                            let token_size = 12.0;
-                            let token_spacing = 8.0;
-                            let total_width = token_size + (token_count.saturating_sub(1) as f32 * token_spacing);
-                            let (tokens_rect, _) = ui.allocate_exact_size(
-                                egui::vec2(total_width, token_size),
-                                egui::Sense::hover()
+                        if i < player_pyramid_tokens.counts.len()
+                            && player_pyramid_tokens.counts[i] > 0
+                        {
+                            let token_count = player_pyramid_tokens.counts[i] as usize;
+                            draw_spaced_row(
+                                ui,
+                                token_count,
+                                mobile::PYRAMID_TOKEN_SIZE,
+                                mobile::PYRAMID_TOKEN_SPACING,
+                                |painter, center, _| {
+                                    draw_pyramid_token_icon(
+                                        painter,
+                                        center,
+                                        mobile::PYRAMID_TOKEN_SIZE,
+                                    );
+                                },
                             );
-                            for t in 0..token_count {
-                                let token_center = egui::pos2(
-                                    tokens_rect.left() + token_size / 2.0 + (t as f32 * token_spacing),
-                                    tokens_rect.center().y
-                                );
-                                draw_pyramid_token_icon(ui.painter(), token_center, token_size);
-                            }
                         }
                     });
                 });
                 current_player_pos
             };
 
-            // Calculate card width based on available space (percentage-based to prevent overflow)
+            // Calculate card width based on available space
             let available_width = ui.available_width();
             let spacing_between = 2.0;
-            let total_spacing = spacing_between * (per_row - 1) as f32;
-            let usable_width = available_width - total_spacing;
-            let card_width = (usable_width / per_row as f32).floor();
+            let card_width = layout::distributed_width(available_width, per_row, spacing_between);
 
-            // Row 1: First batch of players
-            ui.horizontal(|ui| {
-                let first_batch = per_row.min(player_count);
-                for i in 0..first_batch {
-                    if let Some(pos) = draw_player_card(ui, i, &players.players[i], card_width) {
-                        ui_state.player_bet_area_pos = Some(pos);
-                    }
-                    if i < first_batch - 1 {
-                        ui.add_space(2.0);
-                    }
-                }
-            });
-
-            // Row 2: Remaining players (if any)
-            if player_count > per_row {
-                ui.add_space(2.0);
+            // Row 1: First batch of players (centered)
+            ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
                 ui.horizontal(|ui| {
-                    for i in per_row..player_count {
-                        if let Some(pos) = draw_player_card(ui, i, &players.players[i], card_width) {
+                    let first_batch = per_row.min(player_count);
+                    for i in 0..first_batch {
+                        if let Some(pos) = draw_player_card(ui, i, &players.players[i], card_width)
+                        {
                             ui_state.player_bet_area_pos = Some(pos);
                         }
-                        if i < player_count - 1 {
+                        if i < first_batch - 1 {
                             ui.add_space(2.0);
                         }
                     }
+                });
+            });
+
+            // Row 2: Remaining players (if any, centered)
+            if player_count > per_row {
+                ui.add_space(2.0);
+                ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
+                    ui.horizontal(|ui| {
+                        for i in per_row..player_count {
+                            if let Some(pos) =
+                                draw_player_card(ui, i, &players.players[i], card_width)
+                            {
+                                ui_state.player_bet_area_pos = Some(pos);
+                            }
+                            if i < player_count - 1 {
+                                ui.add_space(2.0);
+                            }
+                        }
+                    });
                 });
             }
 
@@ -1472,209 +1759,315 @@ fn render_mobile_ui(
 
             // Camel Standings Row (right-to-left: 1st place on right, last on left)
             let sorted_camels = get_sorted_camels(camel_animations);
-            let camel_display_width = 32.0;
-            let camel_display_height = 24.0;
-            let total_camels_width = camel_display_width * sorted_camels.len() as f32 + 16.0;
-            let camels_start_x = (ui.available_width() - total_camels_width) / 2.0;
+            let camel_count = sorted_camels.len();
 
-            ui.horizontal(|ui| {
-                ui.add_space(camels_start_x.max(0.0));
+            if camel_count > 0 {
+                let camel_display_width = 32.0;
+                let camel_display_height = 24.0;
+                let label_width = 50.0; // Space for "Current\nStandings" label
+                let podium_extra_height = GOLD_PODIUM_HEIGHT + 4.0; // Extra space for podiums
+                let total_camels_width = camel_display_width * sorted_camels.len() as f32;
+                let camels_start_x = (ui.available_width() - total_camels_width) / 2.0;
 
-                // Reverse iteration: display last place on left, 1st place on right
-                let camel_count = sorted_camels.len();
-                for (i, (color, x_offset)) in sorted_camels.iter().rev().enumerate() {
-                    let rank = camel_count - 1 - i;  // Actual rank (0 = 1st place)
-                    let camel_egui_color = camel_color_to_egui(*color);
-                    let border_color = egui::Color32::from_rgb(
-                        (camel_egui_color.r() as f32 * 0.5) as u8,
-                        (camel_egui_color.g() as f32 * 0.5) as u8,
-                        (camel_egui_color.b() as f32 * 0.5) as u8,
+                ui.horizontal(|ui| {
+                    // "Current Standings" label on the left edge
+                    let (label_rect, _) = ui.allocate_exact_size(
+                        egui::vec2(label_width, camel_display_height + podium_extra_height),
+                        egui::Sense::hover(),
+                    );
+                    ui.add_space(4.0);
+                    ui.painter().text(
+                        label_rect.center(),
+                        egui::Align2::CENTER_CENTER,
+                        "Current\nStandings",
+                        egui::FontId::proportional(12.0),
+                        egui::Color32::from_rgb(120, 120, 120),
                     );
 
-                    let (rect, _) = ui.allocate_exact_size(egui::vec2(camel_display_width, camel_display_height + 10.0), egui::Sense::hover());
+                    // Add space to center the camels (accounting for the label we just drew)
+                    let space_after_label = (camels_start_x - label_width).max(0.0);
+                    ui.add_space(space_after_label);
 
-                    let animated_rect = egui::Rect::from_center_size(
-                        rect.center() + egui::vec2(*x_offset * 0.5, 0.0),
-                        egui::vec2(camel_display_width - 4.0, camel_display_height),
-                    );
+                    // Reverse iteration: display last place on left, 1st place on right
+                    let last_place_rank = camel_count - 1;
+                    for (i, (color, x_offset, podium_y)) in sorted_camels.iter().rev().enumerate() {
+                        let rank = camel_count - 1 - i; // Actual rank (0 = 1st place)
+                        let camel_egui_color = camel_color_to_egui(*color);
+                        let border_color = egui::Color32::from_rgb(
+                            (camel_egui_color.r() as f32 * 0.5) as u8,
+                            (camel_egui_color.g() as f32 * 0.5) as u8,
+                            (camel_egui_color.b() as f32 * 0.5) as u8,
+                        );
 
-                    draw_camel_silhouette(ui.painter(), animated_rect, camel_egui_color, border_color);
+                        let (rect, _) = ui.allocate_exact_size(
+                            egui::vec2(
+                                camel_display_width,
+                                camel_display_height + podium_extra_height,
+                            ),
+                            egui::Sense::hover(),
+                        );
 
-                    // Rank badge (pill-shaped)
-                    if rank == 0 {
-                        let pill_center = animated_rect.right_top() + egui::vec2(-8.0, 6.0);
-                        let pill_size = egui::vec2(16.0, 10.0);
-                        let pill_rect = egui::Rect::from_center_size(pill_center, pill_size);
-                        ui.painter().rect_filled(pill_rect, 5.0, egui::Color32::from_rgb(255, 215, 0));
-                        ui.painter().text(pill_center, egui::Align2::CENTER_CENTER, "1st", egui::FontId::proportional(7.0), egui::Color32::from_rgb(100, 70, 0));
-                    } else if rank == 1 {
-                        let pill_center = animated_rect.right_top() + egui::vec2(-8.0, 6.0);
-                        let pill_size = egui::vec2(16.0, 10.0);
-                        let pill_rect = egui::Rect::from_center_size(pill_center, pill_size);
-                        ui.painter().rect_filled(pill_rect, 5.0, egui::Color32::from_rgb(192, 192, 192));
-                        ui.painter().text(pill_center, egui::Align2::CENTER_CENTER, "2nd", egui::FontId::proportional(7.0), egui::Color32::from_rgb(60, 60, 60));
+                        // Base position for camel (bottom of allocated space)
+                        let base_y = rect.bottom() - camel_display_height * 0.5;
+
+                        // Draw podium step if 1st or 2nd place
+                        // Camel bottom is at base_y + camel_display_height * 0.5, podium bottom should match
+                        let camel_bottom = base_y + camel_display_height * 0.5;
+                        if rank == 0 {
+                            // Gold podium (taller)
+                            let podium_height = GOLD_PODIUM_HEIGHT;
+                            let podium_rect = egui::Rect::from_min_size(
+                                egui::pos2(rect.left() + 2.0, camel_bottom - podium_height),
+                                egui::vec2(camel_display_width - 4.0, podium_height),
+                            );
+                            // Gold colors
+                            ui.painter().rect_filled(
+                                podium_rect,
+                                1.0,
+                                egui::Color32::from_rgb(255, 215, 0),
+                            );
+                            ui.painter().rect_stroke(
+                                podium_rect,
+                                1.0,
+                                egui::Stroke::new(1.0, egui::Color32::from_rgb(200, 160, 0)),
+                                egui::epaint::StrokeKind::Outside,
+                            );
+                        } else if rank == 1 {
+                            // Silver podium (shorter)
+                            let podium_height = SILVER_PODIUM_HEIGHT;
+                            let podium_rect = egui::Rect::from_min_size(
+                                egui::pos2(rect.left() + 2.0, camel_bottom - podium_height),
+                                egui::vec2(camel_display_width - 4.0, podium_height),
+                            );
+                            // Silver colors
+                            ui.painter().rect_filled(
+                                podium_rect,
+                                1.0,
+                                egui::Color32::from_rgb(192, 192, 200),
+                            );
+                            ui.painter().rect_stroke(
+                                podium_rect,
+                                1.0,
+                                egui::Stroke::new(1.0, egui::Color32::from_rgb(140, 140, 150)),
+                                egui::epaint::StrokeKind::Outside,
+                            );
+                        }
+
+                        // Camel rect with animated podium offset (podium_y is negative when on podium)
+                        let animated_rect = egui::Rect::from_center_size(
+                            egui::pos2(rect.center().x + *x_offset * 0.5, base_y + *podium_y),
+                            egui::vec2(camel_display_width - 4.0, camel_display_height),
+                        );
+
+                        draw_camel_silhouette(
+                            ui.painter(),
+                            animated_rect,
+                            camel_egui_color,
+                            border_color,
+                        );
+
+                        // Rank indicators with hats instead of pills
+                        if rank == 0 {
+                            // 1st place: Gold crown
+                            draw_crown_overlay(ui.painter(), animated_rect);
+                        } else if rank == 1 {
+                            // 2nd place: Silver crown
+                            draw_silver_crown_overlay(ui.painter(), animated_rect);
+                        } else if rank == last_place_rank {
+                            // Last place: Dunce cap
+                            draw_dunce_cap_overlay(ui.painter(), animated_rect);
+                        }
                     }
-                }
-            });
+                });
+            }
+
             ui.add_space(2.0);
         });
 
-    // Dice tents are now Bevy sprites positioned above the track
+    if ui_state.dice_popup_timer > 0.0 && ui_state.dice_popup_delay <= 0.0 {
+        egui::Area::new("dice_toast_area".into())
+            .anchor(
+                egui::Align2::CENTER_TOP,
+                egui::vec2(0.0, panel_response.response.rect.bottom() + 4.0),
+            )
+            .order(egui::Order::Foreground)
+            .interactable(false)
+            .show(ctx, |ui| {
+                render_dice_toast(ui, ui_state);
+            });
+    }
 
     // === BOTTOM PLAYER PANEL: Player-owned items (WITH background) ===
-    egui::TopBottomPanel::bottom("mobile_player_hud")
-        .show(ctx, |ui| {
-            ui.add_space(4.0);
+    egui::TopBottomPanel::bottom("mobile_player_hud").show(ctx, |ui| {
+        ui.add_space(4.0);
 
-            if can_act {
-                let card_width = 45.0;
-                let card_height = 55.0;
-                let flip_btn_width = 26.0;
-                let btn_size = card_height;
-                let icon_size = 24.0;
+        if can_act {
+            let card_width = 45.0;
+            let card_height = 55.0;
+            let flip_btn_width = 26.0;
+            let btn_size = card_height;
+            let icon_size = 24.0;
 
-                // Calculate total width for centering
-                let total_width = btn_size + 2.0 + btn_size + 4.0 + card_width + flip_btn_width;
-                let start_x = (ui.available_width() - total_width) / 2.0;
+            // Calculate total width for centering
+            let total_width = btn_size + 2.0 + btn_size + 4.0 + card_width + flip_btn_width;
+            let start_x = (ui.available_width() - total_width) / 2.0;
 
-                ui.horizontal(|ui| {
-                    ui.add_space(start_x.max(0.0));
+            ui.horizontal(|ui| {
+                ui.add_space(start_x.max(0.0));
 
-                    // Winner bet button - square with icon inside
-                    let (winner_rect, winner_response) = ui.allocate_exact_size(
-                        egui::vec2(btn_size, btn_size),
-                        egui::Sense::click()
+                // Winner bet button - square with icon inside
+                let (winner_rect, winner_response) =
+                    ui.allocate_exact_size(egui::vec2(btn_size, btn_size), egui::Sense::click());
+                let winner_bg = if winner_response.hovered() {
+                    egui::Color32::from_rgb(80, 140, 80)
+                } else {
+                    egui::Color32::from_rgb(60, 120, 60)
+                };
+                ui.painter().rect_filled(winner_rect, 4.0, winner_bg);
+                ui.painter().rect_stroke(
+                    winner_rect,
+                    4.0,
+                    egui::Stroke::new(1.0, egui::Color32::from_rgb(40, 80, 40)),
+                    egui::epaint::StrokeKind::Outside,
+                );
+                let icon_rect = egui::Rect::from_center_size(
+                    winner_rect.center() + egui::vec2(0.0, -8.0),
+                    egui::vec2(icon_size, icon_size),
+                );
+                draw_camel_with_crown(ui.painter(), icon_rect);
+                ui.painter().text(
+                    winner_rect.center() + egui::vec2(0.0, 16.0),
+                    egui::Align2::CENTER_CENTER,
+                    "Bet Winner",
+                    egui::FontId::proportional(8.0),
+                    egui::Color32::WHITE,
+                );
+                if winner_response.clicked() {
+                    ui_state.show_winner_betting = true;
+                }
+
+                ui.add_space(2.0);
+
+                // Loser bet button - square with icon inside
+                let (loser_rect, loser_response) =
+                    ui.allocate_exact_size(egui::vec2(btn_size, btn_size), egui::Sense::click());
+                let loser_bg = if loser_response.hovered() {
+                    egui::Color32::from_rgb(140, 80, 80)
+                } else {
+                    egui::Color32::from_rgb(120, 60, 60)
+                };
+                ui.painter().rect_filled(loser_rect, 4.0, loser_bg);
+                ui.painter().rect_stroke(
+                    loser_rect,
+                    4.0,
+                    egui::Stroke::new(1.0, egui::Color32::from_rgb(80, 40, 40)),
+                    egui::epaint::StrokeKind::Outside,
+                );
+                let icon_rect = egui::Rect::from_center_size(
+                    loser_rect.center() + egui::vec2(0.0, -8.0),
+                    egui::vec2(icon_size, icon_size),
+                );
+                draw_camel_with_dunce_cap(ui.painter(), icon_rect);
+                ui.painter().text(
+                    loser_rect.center() + egui::vec2(0.0, 16.0),
+                    egui::Align2::CENTER_CENTER,
+                    "Bet Loser",
+                    egui::FontId::proportional(8.0),
+                    egui::Color32::WHITE,
+                );
+                if loser_response.clicked() {
+                    ui_state.show_loser_betting = true;
+                }
+
+                ui.add_space(4.0);
+
+                // Spectator tile card
+                if current.has_spectator_tile {
+                    let (card_rect, card_response) = ui.allocate_exact_size(
+                        egui::vec2(card_width, card_height),
+                        egui::Sense::click(),
                     );
-                    let winner_bg = if winner_response.hovered() {
-                        egui::Color32::from_rgb(80, 140, 80)
+
+                    draw_spectator_tile_card(
+                        ui.painter(),
+                        card_rect,
+                        current.character_id,
+                        current_player_color,
+                        ui_state.spectator_tile_is_oasis,
+                        ui_state.spectator_tile_flip_anim,
+                    );
+
+                    if ui_state.spectator_tile_selected {
+                        ui.painter().rect_stroke(
+                            card_rect.expand(2.0),
+                            4.0,
+                            egui::Stroke::new(3.0, egui::Color32::GOLD),
+                            egui::epaint::StrokeKind::Outside,
+                        );
+                    } else if card_response.hovered() {
+                        ui.painter().rect_stroke(
+                            card_rect.expand(1.0),
+                            3.0,
+                            egui::Stroke::new(
+                                2.0,
+                                egui::Color32::from_rgba_unmultiplied(255, 215, 0, 128),
+                            ),
+                            egui::epaint::StrokeKind::Outside,
+                        );
+                    }
+
+                    if card_response.clicked() {
+                        ui_state.spectator_tile_selected = !ui_state.spectator_tile_selected;
+                    }
+
+                    // Flip button
+                    let (flip_rect, flip_response) = ui.allocate_exact_size(
+                        egui::vec2(flip_btn_width, card_height),
+                        egui::Sense::click(),
+                    );
+                    let flip_bg = if flip_response.hovered() {
+                        egui::Color32::from_rgb(70, 70, 80)
                     } else {
-                        egui::Color32::from_rgb(60, 120, 60)
+                        egui::Color32::from_rgb(50, 50, 60)
                     };
-                    ui.painter().rect_filled(winner_rect, 4.0, winner_bg);
-                    ui.painter().rect_stroke(winner_rect, 4.0, egui::Stroke::new(1.0, egui::Color32::from_rgb(40, 80, 40)), egui::epaint::StrokeKind::Outside);
-                    let icon_rect = egui::Rect::from_center_size(
-                        winner_rect.center() + egui::vec2(0.0, -8.0),
-                        egui::vec2(icon_size, icon_size)
+                    ui.painter().rect_filled(flip_rect, 3.0, flip_bg);
+                    draw_flip_icon(
+                        ui.painter(),
+                        flip_rect.center(),
+                        flip_btn_width.min(card_height) * 0.7,
+                        egui::Color32::from_rgb(200, 200, 210),
                     );
-                    draw_camel_with_crown(ui.painter(), icon_rect);
+                    if flip_response.clicked() && ui_state.spectator_tile_flip_anim == 0.0 {
+                        ui_state.spectator_tile_flip_anim = 0.01;
+                    }
+                } else {
+                    let (card_rect, _) = ui.allocate_exact_size(
+                        egui::vec2(card_width + flip_btn_width + 4.0, card_height),
+                        egui::Sense::hover(),
+                    );
+                    ui.painter().rect_filled(
+                        card_rect,
+                        4.0,
+                        egui::Color32::from_rgba_unmultiplied(80, 80, 80, 100),
+                    );
                     ui.painter().text(
-                        winner_rect.center() + egui::vec2(0.0, 16.0),
+                        card_rect.center(),
                         egui::Align2::CENTER_CENTER,
-                        "Bet Winner",
-                        egui::FontId::proportional(8.0),
-                        egui::Color32::WHITE
+                        "No Tile",
+                        egui::FontId::proportional(9.0),
+                        egui::Color32::GRAY,
                     );
-                    if winner_response.clicked() {
-                        ui_state.show_winner_betting = true;
-                    }
+                }
+            });
+        } else {
+            // Placeholder to maintain panel height when can_act is false
+            // This prevents camera zoom changes when action_taken becomes true
+            let card_height = 55.0;
+            ui.allocate_space(egui::vec2(1.0, card_height));
+        }
 
-                    ui.add_space(2.0);
-
-                    // Loser bet button - square with icon inside
-                    let (loser_rect, loser_response) = ui.allocate_exact_size(
-                        egui::vec2(btn_size, btn_size),
-                        egui::Sense::click()
-                    );
-                    let loser_bg = if loser_response.hovered() {
-                        egui::Color32::from_rgb(140, 80, 80)
-                    } else {
-                        egui::Color32::from_rgb(120, 60, 60)
-                    };
-                    ui.painter().rect_filled(loser_rect, 4.0, loser_bg);
-                    ui.painter().rect_stroke(loser_rect, 4.0, egui::Stroke::new(1.0, egui::Color32::from_rgb(80, 40, 40)), egui::epaint::StrokeKind::Outside);
-                    let icon_rect = egui::Rect::from_center_size(
-                        loser_rect.center() + egui::vec2(0.0, -8.0),
-                        egui::vec2(icon_size, icon_size)
-                    );
-                    draw_camel_with_dunce_cap(ui.painter(), icon_rect);
-                    ui.painter().text(
-                        loser_rect.center() + egui::vec2(0.0, 16.0),
-                        egui::Align2::CENTER_CENTER,
-                        "Bet Loser",
-                        egui::FontId::proportional(8.0),
-                        egui::Color32::WHITE
-                    );
-                    if loser_response.clicked() {
-                        ui_state.show_loser_betting = true;
-                    }
-
-                    ui.add_space(4.0);
-
-                    // Spectator tile card
-                    if current.has_spectator_tile {
-                        let (card_rect, card_response) = ui.allocate_exact_size(
-                            egui::vec2(card_width, card_height),
-                            egui::Sense::click()
-                        );
-
-                        draw_spectator_tile_card(
-                            ui.painter(),
-                            card_rect,
-                            current.character_id,
-                            current_player_color,
-                            ui_state.spectator_tile_is_oasis,
-                            ui_state.spectator_tile_flip_anim,
-                        );
-
-                        if ui_state.spectator_tile_selected {
-                            ui.painter().rect_stroke(
-                                card_rect.expand(2.0),
-                                4.0,
-                                egui::Stroke::new(3.0, egui::Color32::GOLD),
-                                egui::epaint::StrokeKind::Outside
-                            );
-                        } else if card_response.hovered() {
-                            ui.painter().rect_stroke(
-                                card_rect.expand(1.0),
-                                3.0,
-                                egui::Stroke::new(2.0, egui::Color32::from_rgba_unmultiplied(255, 215, 0, 128)),
-                                egui::epaint::StrokeKind::Outside
-                            );
-                        }
-
-                        if card_response.clicked() {
-                            ui_state.spectator_tile_selected = !ui_state.spectator_tile_selected;
-                        }
-
-                        // Flip button
-                        let (flip_rect, flip_response) = ui.allocate_exact_size(
-                            egui::vec2(flip_btn_width, card_height),
-                            egui::Sense::click()
-                        );
-                        let flip_bg = if flip_response.hovered() {
-                            egui::Color32::from_rgb(70, 70, 80)
-                        } else {
-                            egui::Color32::from_rgb(50, 50, 60)
-                        };
-                        ui.painter().rect_filled(flip_rect, 3.0, flip_bg);
-                        draw_flip_icon(ui.painter(), flip_rect.center(), flip_btn_width.min(card_height) * 0.7, egui::Color32::from_rgb(200, 200, 210));
-                        if flip_response.clicked() && ui_state.spectator_tile_flip_anim == 0.0 {
-                            ui_state.spectator_tile_flip_anim = 0.01;
-                        }
-                    } else {
-                        let (card_rect, _) = ui.allocate_exact_size(
-                            egui::vec2(card_width + flip_btn_width + 4.0, card_height),
-                            egui::Sense::hover()
-                        );
-                        ui.painter().rect_filled(card_rect, 4.0, egui::Color32::from_rgba_unmultiplied(80, 80, 80, 100));
-                        ui.painter().text(
-                            card_rect.center(),
-                            egui::Align2::CENTER_CENTER,
-                            "No Tile",
-                            egui::FontId::proportional(9.0),
-                            egui::Color32::GRAY,
-                        );
-                    }
-                });
-            } else {
-                // Placeholder to maintain panel height when can_act is false
-                // This prevents camera zoom changes when action_taken becomes true
-                let card_height = 55.0;
-                ui.allocate_space(egui::vec2(1.0, card_height));
-            }
-
-            ui.add_space(4.0);
-        });
+        ui.add_space(4.0);
+    });
 
     // === SHARED ACTIONS PANEL: Roll + Leg Bets (NO background - part of central area) ===
     egui::TopBottomPanel::bottom("mobile_shared_actions")
@@ -1682,12 +2075,20 @@ fn render_mobile_ui(
         .show(ctx, |ui| {
             ui.add_space(4.0);
 
-            // Status message when not ready
+            // Show "Set up camels" button when not yet started
             if !ui_state.initial_rolls_complete {
-                ui.horizontal(|ui| {
-                    ui.add_space((ui.available_width() - 150.0) / 2.0);
-                    ui.label(egui::RichText::new("Setting up camels...").color(egui::Color32::YELLOW));
-                });
+                if let Some(ref mut rolls) = initial_rolls {
+                    if !rolls.started {
+                        ui.horizontal(|ui| {
+                            ui.add_space((ui.available_width() - 150.0) / 2.0);
+                            if desert_button(ui, "Set up camels", &DesertButtonStyle::default())
+                                .clicked()
+                            {
+                                rolls.started = true;
+                            }
+                        });
+                    }
+                }
             } else {
                 // Show leg bet cards only (pyramid is now a Bevy sprite on the game board)
                 let card_width = 36.0;
@@ -1702,8 +2103,13 @@ fn render_mobile_ui(
                     for (i, color) in CamelColor::all().iter().enumerate() {
                         let color = *color;
                         if let Some(tile) = leg_tiles.top_tile(color) {
-                            let sense = if can_act { egui::Sense::click() } else { egui::Sense::hover() };
-                            let (rect, response) = ui.allocate_exact_size(egui::vec2(card_width, card_height), sense);
+                            let sense = if can_act {
+                                egui::Sense::click()
+                            } else {
+                                egui::Sense::hover()
+                            };
+                            let (rect, response) =
+                                ui.allocate_exact_size(egui::vec2(card_width, card_height), sense);
                             draw_mini_leg_bet_card(ui.painter(), rect, color, tile.value);
 
                             // Track card position for flight animation
@@ -1715,15 +2121,34 @@ fn render_mobile_ui(
                                 }
 
                                 if response.hovered() {
-                                    ui.painter().rect_stroke(rect.expand(2.0), 3.0, egui::Stroke::new(2.0, egui::Color32::GOLD), egui::epaint::StrokeKind::Outside);
+                                    ui.painter().rect_stroke(
+                                        rect.expand(2.0),
+                                        3.0,
+                                        egui::Stroke::new(2.0, egui::Color32::GOLD),
+                                        egui::epaint::StrokeKind::Outside,
+                                    );
                                 }
                             }
                         } else {
-                            let (rect, _) = ui.allocate_exact_size(egui::vec2(card_width, card_height), egui::Sense::hover());
+                            let (rect, _) = ui.allocate_exact_size(
+                                egui::vec2(card_width, card_height),
+                                egui::Sense::hover(),
+                            );
                             let camel_color = camel_color_to_egui(color);
-                            let faded = egui::Color32::from_rgba_unmultiplied(camel_color.r(), camel_color.g(), camel_color.b(), 40);
+                            let faded = egui::Color32::from_rgba_unmultiplied(
+                                camel_color.r(),
+                                camel_color.g(),
+                                camel_color.b(),
+                                40,
+                            );
                             ui.painter().rect_filled(rect, 3.0, faded);
-                            ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, "X", egui::FontId::proportional(12.0), egui::Color32::GRAY);
+                            ui.painter().text(
+                                rect.center(),
+                                egui::Align2::CENTER_CENTER,
+                                "X",
+                                egui::FontId::proportional(12.0),
+                                egui::Color32::GRAY,
+                            );
                             ui_state.leg_bet_card_positions[i] = None;
                         }
                         ui.add_space(2.0);
@@ -1734,7 +2159,11 @@ fn render_mobile_ui(
                 if current.is_ai && !turn_state.action_taken {
                     ui.horizontal(|ui| {
                         ui.add_space((ui.available_width() - 80.0) / 2.0);
-                        ui.label(egui::RichText::new("AI thinking...").italics().color(egui::Color32::GRAY));
+                        ui.label(
+                            egui::RichText::new("AI thinking...")
+                                .italics()
+                                .color(egui::Color32::GRAY),
+                        );
                     });
                 } else if turn_state.action_taken {
                     ui.horizontal(|ui| {
@@ -1749,15 +2178,20 @@ fn render_mobile_ui(
 }
 
 /// Get sorted camels from animation state in current race ranking order
-fn get_sorted_camels(camel_animations: &CamelPositionAnimations) -> Vec<(CamelColor, f32)> {
+/// Returns (color, x_offset, podium_y_offset) for each camel
+fn get_sorted_camels(camel_animations: &CamelPositionAnimations) -> Vec<(CamelColor, f32, f32)> {
     // Use last_order which contains the current race ranking (1st place first)
-    camel_animations.last_order.iter()
+    camel_animations
+        .last_order
+        .iter()
         .map(|&color| {
-            let x_offset = camel_animations.positions.iter()
-                .find(|anim| anim.color == color)
-                .map(|anim| anim.current_y_offset)
-                .unwrap_or(0.0);
-            (color, x_offset)
+            let anim = camel_animations
+                .positions
+                .iter()
+                .find(|anim| anim.color == color);
+            let x_offset = anim.map(|a| a.current_y_offset).unwrap_or(0.0);
+            let podium_y = anim.map(|a| a.current_podium_y).unwrap_or(0.0);
+            (color, x_offset, podium_y)
         })
         .collect()
 }
@@ -1780,8 +2214,9 @@ fn render_desktop_ui(
     leg_bet_action: &mut MessageWriter<TakeLegBetAction>,
     _race_bet_action: &mut MessageWriter<PlaceRaceBetAction>,
     _spectator_tile_action: &mut MessageWriter<PlaceSpectatorTileAction>,
-    camels: &Query<(&Camel, &BoardPosition)>,
+    camels: &Query<(&Camel, &BoardPosition), Without<PendingInitialMove>>,
     current_player_color: egui::Color32,
+    initial_rolls: &mut Option<ResMut<crate::systems::setup::InitialSetupRolls>>,
 ) {
     // Bottom panel - Pyramid tokens display (Dice tents are now Bevy sprites)
     egui::TopBottomPanel::bottom("dice_info").show(ctx, |ui| {
@@ -1811,8 +2246,11 @@ fn render_desktop_ui(
             // Draw stacked pyramid tokens (remaining ones)
             let stack_offset = 6.0; // Vertical offset for stacking effect
             let (stack_rect, _) = ui.allocate_exact_size(
-                egui::vec2(token_size + 10.0, token_size + (tokens_remaining.saturating_sub(1)) as f32 * stack_offset + 10.0),
-                egui::Sense::hover()
+                egui::vec2(
+                    token_size + 10.0,
+                    token_size + (tokens_remaining.saturating_sub(1)) as f32 * stack_offset + 10.0,
+                ),
+                egui::Sense::hover(),
             );
 
             // Draw remaining tokens as a stack (bottom to top)
@@ -1820,7 +2258,7 @@ fn render_desktop_ui(
                 let y_offset = (tokens_remaining - 1 - i) as f32 * stack_offset;
                 let token_center = egui::pos2(
                     stack_rect.center().x,
-                    stack_rect.top() + token_size / 2.0 + y_offset + 5.0
+                    stack_rect.top() + token_size / 2.0 + y_offset + 5.0,
                 );
 
                 // Draw pyramid shape (triangle)
@@ -1828,8 +2266,14 @@ fn render_desktop_ui(
                 let pyramid_width = token_size * 0.7;
 
                 let apex = egui::pos2(token_center.x, token_center.y - pyramid_height / 2.0);
-                let base_left = egui::pos2(token_center.x - pyramid_width / 2.0, token_center.y + pyramid_height / 2.0);
-                let base_right = egui::pos2(token_center.x + pyramid_width / 2.0, token_center.y + pyramid_height / 2.0);
+                let base_left = egui::pos2(
+                    token_center.x - pyramid_width / 2.0,
+                    token_center.y + pyramid_height / 2.0,
+                );
+                let base_right = egui::pos2(
+                    token_center.x + pyramid_width / 2.0,
+                    token_center.y + pyramid_height / 2.0,
+                );
 
                 // Gold/sand colored pyramid token
                 let pyramid_color = egui::Color32::from_rgb(0xD4, 0xA8, 0x4B);
@@ -1870,7 +2314,11 @@ fn render_desktop_ui(
             // Show count text
             ui.add_space(4.0);
             let count_text = format!("{}/{}", tokens_remaining, total_tokens);
-            ui.label(egui::RichText::new(count_text).size(12.0).color(egui::Color32::GRAY));
+            ui.label(
+                egui::RichText::new(count_text)
+                    .size(12.0)
+                    .color(egui::Color32::GRAY),
+            );
         });
     });
 
@@ -1901,8 +2349,14 @@ fn render_desktop_ui(
         let can_act = !turn_state.action_taken && !current.is_ai && ui_state.initial_rolls_complete && !ui_state.show_leg_scoring;
 
         if !ui_state.initial_rolls_complete {
-            ui.label(egui::RichText::new("Setting up camels...").color(egui::Color32::YELLOW).italics());
-            ui.add_space(5.0);
+            if let Some(ref mut rolls) = initial_rolls {
+                if !rolls.started {
+                    if desert_button(ui, "Set up camels", &DesertButtonStyle::default()).clicked() {
+                        rolls.started = true;
+                    }
+                    ui.add_space(5.0);
+                }
+            }
         } else if can_act {
             ui.label(egui::RichText::new("Choose an action:").color(egui::Color32::LIGHT_GREEN));
             ui.add_space(5.0);
@@ -2188,234 +2642,280 @@ fn render_desktop_ui(
     });
 
     // Right panel - All players and camel positions
-    egui::SidePanel::right("players_list").min_width(280.0).show(ctx, |ui| {
-        egui::ScrollArea::vertical().show(ui, |ui| {
-            ui.heading("Players");
-            ui.separator();
+    egui::SidePanel::right("players_list")
+        .min_width(280.0)
+        .show(ctx, |ui| {
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                ui.heading("Players");
+                ui.separator();
 
-            for (i, player) in players.players.iter().enumerate() {
-                let is_current = i == players.current_player_index;
-                let player_color = PLAYER_COLORS[i % PLAYER_COLORS.len()];
+                for (i, player) in players.players.iter().enumerate() {
+                    let is_current = i == players.current_player_index;
+                    let player_color = PLAYER_COLORS[i % PLAYER_COLORS.len()];
 
-                // Player header with frame for current player
-                let frame = if is_current {
-                    egui::Frame::group(ui.style())
-                        .stroke(egui::Stroke::new(2.0, egui::Color32::LIGHT_GREEN))
-                        .inner_margin(4.0)
-                } else {
-                    egui::Frame::group(ui.style())
-                        .inner_margin(4.0)
-                };
+                    // Player header with frame for current player
+                    let frame = if is_current {
+                        egui::Frame::group(ui.style())
+                            .stroke(egui::Stroke::new(2.0, egui::Color32::LIGHT_GREEN))
+                            .inner_margin(4.0)
+                    } else {
+                        egui::Frame::group(ui.style()).inner_margin(4.0)
+                    };
 
-                frame.show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        // Character avatar with colored border
-                        let avatar_size = 40.0;
-                        let (rect, _) = ui.allocate_exact_size(egui::vec2(avatar_size, avatar_size), egui::Sense::hover());
-                        draw_avatar(ui.painter(), rect, player.character_id, Some(player_color));
+                    frame.show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            // Character avatar with colored border
+                            let avatar_size = 40.0;
+                            let (rect, _) = ui.allocate_exact_size(
+                                egui::vec2(avatar_size, avatar_size),
+                                egui::Sense::hover(),
+                            );
+                            draw_avatar(
+                                ui.painter(),
+                                rect,
+                                player.character_id,
+                                Some(player_color),
+                            );
 
-                        // Track current player's position for leg bet card animation
-                        if is_current {
-                            ui_state.player_bet_area_pos = Some(rect.center());
+                            // Track current player's position for leg bet card animation
+                            if is_current {
+                                ui_state.player_bet_area_pos = Some(rect.center());
+                            }
+
+                            ui.add_space(8.0);
+
+                            // Player info in vertical layout
+                            ui.vertical(|ui| {
+                                // Player name with highlight if current
+                                let text = if is_current {
+                                    egui::RichText::new(&player.name)
+                                        .strong()
+                                        .size(14.0)
+                                        .color(egui::Color32::WHITE)
+                                } else {
+                                    egui::RichText::new(&player.name).size(14.0)
+                                };
+                                ui.label(text);
+
+                                // Money and AI status on second line
+                                let ai_tag = if player.is_ai { " (AI)" } else { "" };
+                                ui.label(
+                                    egui::RichText::new(format!("${}{}", player.money, ai_tag))
+                                        .size(12.0),
+                                );
+                            });
+                        });
+
+                        // Show player's leg bets as overlapping mini cards
+                        if i < player_leg_bets.bets.len() && !player_leg_bets.bets[i].is_empty() {
+                            ui.horizontal(|ui| {
+                                ui.add_space(16.0);
+                                ui.label(egui::RichText::new("Leg bets:").small());
+
+                                let bets = &player_leg_bets.bets[i];
+                                draw_overlapping_stack(
+                                    ui,
+                                    bets,
+                                    desktop::MINI_LEG_BET_WIDTH,
+                                    desktop::MINI_LEG_BET_HEIGHT,
+                                    desktop::MINI_LEG_BET_OVERLAP,
+                                    |painter, rect, bet| {
+                                        draw_mini_leg_bet_indicator(
+                                            painter, rect, bet.camel, bet.value,
+                                        );
+                                    },
+                                );
+                            });
                         }
+
+                        // Show pyramid tokens earned this leg as individual icons
+                        if i < player_pyramid_tokens.counts.len()
+                            && player_pyramid_tokens.counts[i] > 0
+                        {
+                            ui.horizontal(|ui| {
+                                ui.add_space(16.0);
+                                let token_count = player_pyramid_tokens.counts[i] as usize;
+                                draw_spaced_row(
+                                    ui,
+                                    token_count,
+                                    desktop::PYRAMID_TOKEN_SIZE,
+                                    desktop::PYRAMID_TOKEN_SPACING,
+                                    |painter, center, _| {
+                                        draw_pyramid_token_icon(
+                                            painter,
+                                            center,
+                                            desktop::PYRAMID_TOKEN_SIZE,
+                                        );
+                                    },
+                                );
+
+                                // Show total value
+                                ui.label(
+                                    egui::RichText::new(format!("+${}", token_count))
+                                        .small()
+                                        .color(egui::Color32::GOLD),
+                                );
+                            });
+                        }
+
+                        // Show race bets for this player
+                        let player_id = player.id;
+                        let winner_bets: Vec<_> = race_bets
+                            .winner_bets
+                            .iter()
+                            .filter(|b| b.player_id == player_id)
+                            .collect();
+                        let loser_bets: Vec<_> = race_bets
+                            .loser_bets
+                            .iter()
+                            .filter(|b| b.player_id == player_id)
+                            .collect();
+
+                        if !winner_bets.is_empty() {
+                            ui.horizontal(|ui| {
+                                ui.add_space(16.0);
+                                ui.label(
+                                    egui::RichText::new("Winner bets:")
+                                        .small()
+                                        .color(egui::Color32::LIGHT_GREEN),
+                                );
+                                for bet in winner_bets {
+                                    let camel_color = camel_color_to_egui(bet.camel);
+                                    let (rect, _) = ui.allocate_exact_size(
+                                        egui::vec2(10.0, 10.0),
+                                        egui::Sense::hover(),
+                                    );
+                                    ui.painter().rect_filled(rect, 2.0, camel_color);
+                                }
+                            });
+                        }
+
+                        if !loser_bets.is_empty() {
+                            ui.horizontal(|ui| {
+                                ui.add_space(16.0);
+                                ui.label(
+                                    egui::RichText::new("Loser bets:")
+                                        .small()
+                                        .color(egui::Color32::from_rgb(255, 100, 100)),
+                                );
+                                for bet in loser_bets {
+                                    let camel_color = camel_color_to_egui(bet.camel);
+                                    let (rect, _) = ui.allocate_exact_size(
+                                        egui::vec2(10.0, 10.0),
+                                        egui::Sense::hover(),
+                                    );
+                                    ui.painter().rect_filled(rect, 2.0, camel_color);
+                                }
+                            });
+                        }
+                    });
+
+                    ui.add_space(4.0);
+                }
+
+                ui.add_space(15.0);
+                ui.heading("Camel Positions");
+                ui.separator();
+
+                // Collect and sort camels by position
+                let mut camel_positions: Vec<(CamelColor, u8, u8)> = camels
+                    .iter()
+                    .map(|(c, p)| (c.color, p.space_index, p.stack_position))
+                    .collect();
+                camel_positions.sort_by(|a, b| b.1.cmp(&a.1).then(b.2.cmp(&a.2)));
+
+                // Silhouette size for camel icons
+                let silhouette_size = egui::vec2(50.0, 36.0);
+
+                for (rank, (color, space, _stack)) in camel_positions.iter().enumerate() {
+                    // Get animation offset for this camel
+                    let y_offset = camel_animations
+                        .positions
+                        .iter()
+                        .find(|a| a.color == *color)
+                        .map(|a| a.current_y_offset)
+                        .unwrap_or(0.0);
+
+                    ui.horizontal(|ui| {
+                        // Rank indicator on the left with fixed width
+                        let rank_text = match rank {
+                            0 => "1st",
+                            1 => "2nd",
+                            2 => "3rd",
+                            3 => "4th",
+                            4 => "5th",
+                            _ => "   ",
+                        };
+                        ui.label(egui::RichText::new(rank_text).size(16.0).strong());
 
                         ui.add_space(8.0);
 
-                        // Player info in vertical layout
-                        ui.vertical(|ui| {
-                            // Player name with highlight if current
-                            let text = if is_current {
-                                egui::RichText::new(&player.name)
-                                    .strong()
-                                    .size(14.0)
-                                    .color(egui::Color32::WHITE)
-                            } else {
-                                egui::RichText::new(&player.name)
-                                    .size(14.0)
-                            };
-                            ui.label(text);
-
-                            // Money and AI status on second line
-                            let ai_tag = if player.is_ai { " (AI)" } else { "" };
-                            ui.label(egui::RichText::new(format!("${}{}", player.money, ai_tag)).size(12.0));
-                        });
-                    });
-
-                    // Show player's leg bets as overlapping mini cards
-                    if i < player_leg_bets.bets.len() && !player_leg_bets.bets[i].is_empty() {
-                        ui.horizontal(|ui| {
-                            ui.add_space(16.0);
-                            ui.label(egui::RichText::new("Leg bets:").small());
-
-                            let bets = &player_leg_bets.bets[i];
-                            let card_width = 16.0;
-                            let card_height = 20.0;
-                            let overlap = 8.0;
-                            let total_width = card_width + (bets.len().saturating_sub(1) as f32 * overlap);
-                            let (total_rect, _) = ui.allocate_exact_size(
-                                egui::vec2(total_width, card_height),
-                                egui::Sense::hover()
-                            );
-
-                            for (j, bet) in bets.iter().enumerate() {
-                                let x_offset = j as f32 * overlap;
-                                let card_rect = egui::Rect::from_min_size(
-                                    total_rect.min + egui::vec2(x_offset, 0.0),
-                                    egui::vec2(card_width, card_height)
-                                );
-                                draw_mini_leg_bet_indicator(ui.painter(), card_rect, bet.camel, bet.value);
-                            }
-                        });
-                    }
-
-                    // Show pyramid tokens earned this leg as individual icons
-                    if i < player_pyramid_tokens.counts.len() && player_pyramid_tokens.counts[i] > 0 {
-                        ui.horizontal(|ui| {
-                            ui.add_space(16.0);
-                            let token_count = player_pyramid_tokens.counts[i];
-                            let token_size = 18.0;
-                            let token_spacing = 14.0; // Slight overlap for stacked look
-
-                            // Allocate space for all tokens
-                            let total_width = token_size + (token_count.saturating_sub(1) as f32 * token_spacing);
-                            let (tokens_rect, _) = ui.allocate_exact_size(
-                                egui::vec2(total_width, token_size),
-                                egui::Sense::hover()
-                            );
-
-                            // Draw each token
-                            for t in 0..token_count {
-                                let token_center = egui::pos2(
-                                    tokens_rect.left() + token_size / 2.0 + (t as f32 * token_spacing),
-                                    tokens_rect.center().y
-                                );
-                                draw_pyramid_token_icon(ui.painter(), token_center, token_size);
-                            }
-
-                            // Show total value
-                            ui.label(egui::RichText::new(format!("+${}", token_count))
-                                .small().color(egui::Color32::GOLD));
-                        });
-                    }
-
-                    // Show race bets for this player
-                    let player_id = player.id;
-                    let winner_bets: Vec<_> = race_bets.winner_bets.iter()
-                        .filter(|b| b.player_id == player_id)
-                        .collect();
-                    let loser_bets: Vec<_> = race_bets.loser_bets.iter()
-                        .filter(|b| b.player_id == player_id)
-                        .collect();
-
-                    if !winner_bets.is_empty() {
-                        ui.horizontal(|ui| {
-                            ui.add_space(16.0);
-                            ui.label(egui::RichText::new("Winner bets:").small().color(egui::Color32::LIGHT_GREEN));
-                            for bet in winner_bets {
-                                let camel_color = camel_color_to_egui(bet.camel);
-                                let (rect, _) = ui.allocate_exact_size(egui::vec2(10.0, 10.0), egui::Sense::hover());
-                                ui.painter().rect_filled(rect, 2.0, camel_color);
-                            }
-                        });
-                    }
-
-                    if !loser_bets.is_empty() {
-                        ui.horizontal(|ui| {
-                            ui.add_space(16.0);
-                            ui.label(egui::RichText::new("Loser bets:").small().color(egui::Color32::from_rgb(255, 100, 100)));
-                            for bet in loser_bets {
-                                let camel_color = camel_color_to_egui(bet.camel);
-                                let (rect, _) = ui.allocate_exact_size(egui::vec2(10.0, 10.0), egui::Sense::hover());
-                                ui.painter().rect_filled(rect, 2.0, camel_color);
-                            }
-                        });
-                    }
-                });
-
-                ui.add_space(4.0);
-            }
-
-            ui.add_space(15.0);
-            ui.heading("Camel Positions");
-            ui.separator();
-
-            // Collect and sort camels by position
-            let mut camel_positions: Vec<(CamelColor, u8, u8)> = camels
-                .iter()
-                .map(|(c, p)| (c.color, p.space_index, p.stack_position))
-                .collect();
-            camel_positions.sort_by(|a, b| b.1.cmp(&a.1).then(b.2.cmp(&a.2)));
-
-            // Silhouette size for camel icons
-            let silhouette_size = egui::vec2(50.0, 36.0);
-
-            for (rank, (color, space, _stack)) in camel_positions.iter().enumerate() {
-                // Get animation offset for this camel
-                let y_offset = camel_animations.positions
-                    .iter()
-                    .find(|a| a.color == *color)
-                    .map(|a| a.current_y_offset)
-                    .unwrap_or(0.0);
-
-                ui.horizontal(|ui| {
-                    // Rank indicator on the left with fixed width
-                    let rank_text = match rank {
-                        0 => "1st",
-                        1 => "2nd",
-                        2 => "3rd",
-                        3 => "4th",
-                        4 => "5th",
-                        _ => "   ",
-                    };
-                    ui.label(egui::RichText::new(rank_text).size(16.0).strong());
-
-                    ui.add_space(8.0);
-
-                    // Progress bar showing position on track (space 1-16)
-                    let progress = (*space as f32 + 1.0) / 16.0; // 16 spaces on track
-                    let bar_width = 80.0;
-                    let bar_height = 8.0;
-                    let (bar_rect, _) = ui.allocate_exact_size(egui::vec2(bar_width, bar_height), egui::Sense::hover());
-
-                    // Draw progress bar background
-                    ui.painter().rect_filled(bar_rect, 2.0, egui::Color32::from_rgb(60, 60, 60));
-
-                    // Draw progress bar fill with camel color
-                    let camel_bar_color = camel_color_to_egui(*color);
-                    let fill_width = bar_width * progress;
-                    let fill_rect = egui::Rect::from_min_size(
-                        bar_rect.min,
-                        egui::vec2(fill_width, bar_height),
-                    );
-                    ui.painter().rect_filled(fill_rect, 2.0, camel_bar_color);
-
-                    // Draw border
-                    ui.painter().rect_stroke(bar_rect, 2.0, egui::Stroke::new(1.0, egui::Color32::from_rgb(100, 100, 100)), egui::epaint::StrokeKind::Outside);
-
-                    // Add flexible spacer to push camel to the right
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        // Draw camel silhouette on the right with animation offset
-                        let camel_egui_color = camel_color_to_egui(*color);
-                        let border_color = egui::Color32::from_rgb(
-                            (camel_egui_color.r() as f32 * 0.5) as u8,
-                            (camel_egui_color.g() as f32 * 0.5) as u8,
-                            (camel_egui_color.b() as f32 * 0.5) as u8,
+                        // Progress bar showing position on track (space 1-16)
+                        let progress = (*space as f32 + 1.0) / 16.0; // 16 spaces on track
+                        let bar_width = 80.0;
+                        let bar_height = 8.0;
+                        let (bar_rect, _) = ui.allocate_exact_size(
+                            egui::vec2(bar_width, bar_height),
+                            egui::Sense::hover(),
                         );
 
-                        let (rect, _) = ui.allocate_exact_size(silhouette_size, egui::Sense::hover());
-                        // Apply animation offset to the silhouette position
-                        let animated_rect = rect.translate(egui::vec2(0.0, y_offset));
-                        draw_camel_silhouette(ui.painter(), animated_rect, camel_egui_color, border_color);
-                    });
-                });
+                        // Draw progress bar background
+                        ui.painter().rect_filled(
+                            bar_rect,
+                            2.0,
+                            egui::Color32::from_rgb(60, 60, 60),
+                        );
 
-                // Add spacing between rows
-                if rank < 4 {
-                    ui.add_space(4.0);
+                        // Draw progress bar fill with camel color
+                        let camel_bar_color = camel_color_to_egui(*color);
+                        let fill_width = bar_width * progress;
+                        let fill_rect = egui::Rect::from_min_size(
+                            bar_rect.min,
+                            egui::vec2(fill_width, bar_height),
+                        );
+                        ui.painter().rect_filled(fill_rect, 2.0, camel_bar_color);
+
+                        // Draw border
+                        ui.painter().rect_stroke(
+                            bar_rect,
+                            2.0,
+                            egui::Stroke::new(1.0, egui::Color32::from_rgb(100, 100, 100)),
+                            egui::epaint::StrokeKind::Outside,
+                        );
+
+                        // Add flexible spacer to push camel to the right
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            // Draw camel silhouette on the right with animation offset
+                            let camel_egui_color = camel_color_to_egui(*color);
+                            let border_color = egui::Color32::from_rgb(
+                                (camel_egui_color.r() as f32 * 0.5) as u8,
+                                (camel_egui_color.g() as f32 * 0.5) as u8,
+                                (camel_egui_color.b() as f32 * 0.5) as u8,
+                            );
+
+                            let (rect, _) =
+                                ui.allocate_exact_size(silhouette_size, egui::Sense::hover());
+                            // Apply animation offset to the silhouette position
+                            let animated_rect = rect.translate(egui::vec2(0.0, y_offset));
+                            draw_camel_silhouette(
+                                ui.painter(),
+                                animated_rect,
+                                camel_egui_color,
+                                border_color,
+                            );
+                        });
+                    });
+
+                    // Add spacing between rows
+                    if rank < 4 {
+                        ui.add_space(4.0);
+                    }
                 }
-            }
+            });
         });
-    });
+
+    // Dice roll toast notification - floating below the right panel
+    render_dice_toast_floating(ctx, ui_state);
 }
 
 /// Render shared popup windows (race betting, spectator tile placement, dice result)
@@ -2428,8 +2928,8 @@ fn render_popup_windows(
     ui_state: &mut UiState,
     race_bet_action: &mut MessageWriter<PlaceRaceBetAction>,
     spectator_tile_action: &mut MessageWriter<PlaceSpectatorTileAction>,
-    camels: &Query<(&Camel, &BoardPosition)>,
-    crazy_camels: &Query<(&CrazyCamel, &BoardPosition)>,
+    camels: &Query<(&Camel, &BoardPosition), Without<PendingInitialMove>>,
+    crazy_camels: &Query<(&CrazyCamel, &BoardPosition), Without<PendingInitialMove>>,
     current_player_color: egui::Color32,
 ) {
     // Winner betting popup window
@@ -2448,7 +2948,11 @@ fn render_popup_windows(
                     // Left side: Payout info
                     ui.vertical(|ui| {
                         ui.set_min_width(100.0);
-                        ui.heading(egui::RichText::new("Payouts").size(14.0).color(egui::Color32::LIGHT_GREEN));
+                        ui.heading(
+                            egui::RichText::new("Payouts")
+                                .size(14.0)
+                                .color(egui::Color32::LIGHT_GREEN),
+                        );
                         ui.add_space(4.0);
                         ui.label(egui::RichText::new("Correct Bet:").size(11.0).strong());
                         ui.label(egui::RichText::new("  1st: $8").size(11.0));
@@ -2457,24 +2961,40 @@ fn render_popup_windows(
                         ui.label(egui::RichText::new("  4th: $2").size(11.0));
                         ui.label(egui::RichText::new("  5th+: $1").size(11.0));
                         ui.add_space(8.0);
-                        ui.label(egui::RichText::new("Wrong: -$1").size(11.0).color(egui::Color32::from_rgb(255, 100, 100)));
+                        ui.label(
+                            egui::RichText::new("Wrong: -$1")
+                                .size(11.0)
+                                .color(egui::Color32::from_rgb(255, 100, 100)),
+                        );
                     });
 
                     ui.separator();
 
                     // Right side: Cards
                     ui.vertical(|ui| {
-                        ui.label(egui::RichText::new("Choose a camel you think will WIN:").size(12.0).color(egui::Color32::GRAY));
+                        ui.label(
+                            egui::RichText::new("Choose a camel you think will WIN:")
+                                .size(12.0)
+                                .color(egui::Color32::GRAY),
+                        );
                         ui.add_space(8.0);
 
                         ui.horizontal_wrapped(|ui| {
                             for color in CamelColor::all() {
                                 let has_card = current.available_race_cards.contains(&color);
                                 let card_size = egui::vec2(70.0, 90.0);
-                                let (rect, response) = ui.allocate_exact_size(card_size, egui::Sense::click());
+                                let (rect, response) =
+                                    ui.allocate_exact_size(card_size, egui::Sense::click());
 
                                 if has_card {
-                                    draw_race_bet_card(ui.painter(), rect, color, character_id, player_color, response.hovered());
+                                    draw_race_bet_card(
+                                        ui.painter(),
+                                        rect,
+                                        color,
+                                        character_id,
+                                        player_color,
+                                        response.hovered(),
+                                    );
 
                                     if response.clicked() {
                                         race_bet_action.write(PlaceRaceBetAction {
@@ -2487,13 +3007,23 @@ fn render_popup_windows(
                                     response.on_hover_text(format!("Bet on {:?} to WIN", color));
                                 } else {
                                     // Determine if this card was used for winner or loser bet
-                                    let bet_type = if race_bets.winner_bets.iter().any(|b| b.player_id == current.id && b.camel == color) {
+                                    let bet_type = if race_bets
+                                        .winner_bets
+                                        .iter()
+                                        .any(|b| b.player_id == current.id && b.camel == color)
+                                    {
                                         PlacedBetType::Winner
                                     } else {
                                         PlacedBetType::Loser
                                     };
-                                    draw_race_bet_card_unavailable(ui.painter(), rect, color, bet_type);
-                                    response.on_hover_text(format!("{:?} card already used", color));
+                                    draw_race_bet_card_unavailable(
+                                        ui.painter(),
+                                        rect,
+                                        color,
+                                        bet_type,
+                                    );
+                                    response
+                                        .on_hover_text(format!("{:?} card already used", color));
                                 }
                             }
                         });
@@ -2526,7 +3056,11 @@ fn render_popup_windows(
                     // Left side: Payout info
                     ui.vertical(|ui| {
                         ui.set_min_width(100.0);
-                        ui.heading(egui::RichText::new("Payouts").size(14.0).color(egui::Color32::from_rgb(255, 100, 100)));
+                        ui.heading(
+                            egui::RichText::new("Payouts")
+                                .size(14.0)
+                                .color(egui::Color32::from_rgb(255, 100, 100)),
+                        );
                         ui.add_space(4.0);
                         ui.label(egui::RichText::new("Correct Bet:").size(11.0).strong());
                         ui.label(egui::RichText::new("  1st: $8").size(11.0));
@@ -2535,24 +3069,40 @@ fn render_popup_windows(
                         ui.label(egui::RichText::new("  4th: $2").size(11.0));
                         ui.label(egui::RichText::new("  5th+: $1").size(11.0));
                         ui.add_space(8.0);
-                        ui.label(egui::RichText::new("Wrong: -$1").size(11.0).color(egui::Color32::from_rgb(255, 100, 100)));
+                        ui.label(
+                            egui::RichText::new("Wrong: -$1")
+                                .size(11.0)
+                                .color(egui::Color32::from_rgb(255, 100, 100)),
+                        );
                     });
 
                     ui.separator();
 
                     // Right side: Cards
                     ui.vertical(|ui| {
-                        ui.label(egui::RichText::new("Choose a camel you think will LOSE:").size(12.0).color(egui::Color32::GRAY));
+                        ui.label(
+                            egui::RichText::new("Choose a camel you think will LOSE:")
+                                .size(12.0)
+                                .color(egui::Color32::GRAY),
+                        );
                         ui.add_space(8.0);
 
                         ui.horizontal_wrapped(|ui| {
                             for color in CamelColor::all() {
                                 let has_card = current.available_race_cards.contains(&color);
                                 let card_size = egui::vec2(70.0, 90.0);
-                                let (rect, response) = ui.allocate_exact_size(card_size, egui::Sense::click());
+                                let (rect, response) =
+                                    ui.allocate_exact_size(card_size, egui::Sense::click());
 
                                 if has_card {
-                                    draw_race_bet_card(ui.painter(), rect, color, character_id, player_color, response.hovered());
+                                    draw_race_bet_card(
+                                        ui.painter(),
+                                        rect,
+                                        color,
+                                        character_id,
+                                        player_color,
+                                        response.hovered(),
+                                    );
 
                                     if response.clicked() {
                                         race_bet_action.write(PlaceRaceBetAction {
@@ -2565,13 +3115,23 @@ fn render_popup_windows(
                                     response.on_hover_text(format!("Bet on {:?} to LOSE", color));
                                 } else {
                                     // Determine if this card was used for winner or loser bet
-                                    let bet_type = if race_bets.winner_bets.iter().any(|b| b.player_id == current.id && b.camel == color) {
+                                    let bet_type = if race_bets
+                                        .winner_bets
+                                        .iter()
+                                        .any(|b| b.player_id == current.id && b.camel == color)
+                                    {
                                         PlacedBetType::Winner
                                     } else {
                                         PlacedBetType::Loser
                                     };
-                                    draw_race_bet_card_unavailable(ui.painter(), rect, color, bet_type);
-                                    response.on_hover_text(format!("{:?} card already used", color));
+                                    draw_race_bet_card_unavailable(
+                                        ui.painter(),
+                                        rect,
+                                        color,
+                                        bet_type,
+                                    );
+                                    response
+                                        .on_hover_text(format!("{:?} card already used", color));
                                 }
                             }
                         });
@@ -2590,7 +3150,11 @@ fn render_popup_windows(
 
     // Spectator tile placement popup window
     if ui_state.show_spectator_tile {
-        let tile_type = if ui_state.spectator_tile_is_oasis { "Oasis (+1)" } else { "Mirage (-1)" };
+        let tile_type = if ui_state.spectator_tile_is_oasis {
+            "Oasis (+1)"
+        } else {
+            "Mirage (-1)"
+        };
         egui::Window::new(format!("Place Spectator Tile ({})", tile_type))
             .collapsible(false)
             .resizable(false)
@@ -2605,7 +3169,8 @@ fn render_popup_windows(
                 // Show current tile type with mini preview
                 ui.horizontal(|ui| {
                     ui.label("Placing:");
-                    let (preview_rect, _) = ui.allocate_exact_size(egui::vec2(36.0, 50.0), egui::Sense::hover());
+                    let (preview_rect, _) =
+                        ui.allocate_exact_size(egui::vec2(36.0, 50.0), egui::Sense::hover());
                     draw_spectator_tile_card(
                         ui.painter(),
                         preview_rect,
@@ -2623,12 +3188,19 @@ fn render_popup_windows(
 
                 ui.add_space(8.0);
                 ui.label("Select a space (2-16):");
-                ui.label(egui::RichText::new("(Cannot place on space 1, spaces with camels, or other tiles)").small().color(egui::Color32::GRAY));
+                ui.label(
+                    egui::RichText::new(
+                        "(Cannot place on space 1, spaces with camels, or other tiles)",
+                    )
+                    .small()
+                    .color(egui::Color32::GRAY),
+                );
                 ui.add_space(6.0);
 
                 // Show space selection grid
                 ui.horizontal_wrapped(|ui| {
-                    for space in 1..TRACK_LENGTH {  // Spaces 1-15 (indices 1-15), space 0 is start
+                    for space in 1..TRACK_LENGTH {
+                        // Spaces 1-15 (indices 1-15), space 0 is start
                         let has_camel = camel_spaces.contains(&space);
                         let has_tile = placed_tiles.is_space_occupied(space);
                         let is_selected = ui_state.spectator_tile_space == Some(space);
@@ -2637,12 +3209,13 @@ fn render_popup_windows(
 
                         let button_text = format!("{}", space + 1);
                         let button = if is_selected {
-                            egui::Button::new(egui::RichText::new(&button_text).strong())
-                                .fill(if ui_state.spectator_tile_is_oasis {
+                            egui::Button::new(egui::RichText::new(&button_text).strong()).fill(
+                                if ui_state.spectator_tile_is_oasis {
                                     egui::Color32::from_rgb(80, 160, 80)
                                 } else {
                                     egui::Color32::from_rgb(200, 150, 80)
-                                })
+                                },
+                            )
                         } else {
                             egui::Button::new(&button_text)
                         };
@@ -2664,8 +3237,9 @@ fn render_popup_windows(
 
                         // Place button with appropriate color
                         let place_btn = egui::Button::new(
-                            egui::RichText::new(format!("Place {}", tile_type)).strong()
-                        ).fill(if ui_state.spectator_tile_is_oasis {
+                            egui::RichText::new(format!("Place {}", tile_type)).strong(),
+                        )
+                        .fill(if ui_state.spectator_tile_is_oasis {
                             egui::Color32::from_rgb(80, 160, 80)
                         } else {
                             egui::Color32::from_rgb(200, 150, 80)
@@ -2689,167 +3263,251 @@ fn render_popup_windows(
                 }
             });
     }
+}
 
-    // Dice result popup (enhanced with scale-in and better styling)
+/// Render dice roll toast notification as a floating element that slides down from top panels
+fn render_dice_toast_floating(ctx: &egui::Context, ui_state: &UiState) {
     // Only show after delay completes (waits for dice shake animation)
-    if ui_state.dice_popup_timer > 0.0 && ui_state.dice_popup_delay <= 0.0 {
-        if let Some(ref last_roll) = ui_state.last_roll {
-            // Calculate animation phases
-            // Use the appropriate duration based on roll type
-            let total_duration = match last_roll {
-                LastRoll::Regular(_, _) => 2.0,
-                LastRoll::Crazy(_, _) => 2.5,
-            };
-            let time_elapsed = (total_duration - ui_state.dice_popup_timer).max(0.0);
+    if ui_state.dice_popup_timer <= 0.0 || ui_state.dice_popup_delay > 0.0 {
+        return;
+    }
 
-            // Scale-in effect during first 0.2 seconds
-            let scale_in_duration = 0.2;
-            let scale = if time_elapsed < scale_in_duration {
-                // Ease-out cubic for scale-in
-                let t = (time_elapsed / scale_in_duration).clamp(0.0, 1.0);
-                0.5 + 0.5 * (1.0 - (1.0 - t).powi(3))
-            } else {
-                1.0
-            };
+    let Some(ref last_roll) = ui_state.last_roll else {
+        return;
+    };
 
-            // Fade out during last 0.5 seconds
-            let alpha = if ui_state.dice_popup_timer < 0.5 {
-                ui_state.dice_popup_timer / 0.5
-            } else {
-                1.0
-            };
-            let alpha_u8 = (alpha * 255.0) as u8;
+    // Calculate animation phases
+    let total_duration = match last_roll {
+        LastRoll::Regular(_, _) => 2.0,
+        LastRoll::Crazy(_, _) => 2.5,
+    };
+    let time_elapsed = (total_duration - ui_state.dice_popup_timer).max(0.0);
 
-            let (text, value, camel_color, is_crazy) = match last_roll {
-                LastRoll::Regular(color, value) => {
-                    (format!("{:?}", color), *value, camel_color_to_egui(*color), false)
-                }
-                LastRoll::Crazy(color, value) => {
-                    (format!("{:?}", color), *value, crazy_camel_color_to_egui(*color), true)
-                }
-            };
+    // Slide-down animation during first 0.25 seconds
+    let slide_duration = 0.25;
+    let y_offset = if time_elapsed < slide_duration {
+        let t = (time_elapsed / slide_duration).clamp(0.0, 1.0);
+        // Ease-out cubic: start at -50, end at 0
+        let ease_t = 1.0 - (1.0 - t).powi(3);
+        -50.0 * (1.0 - ease_t)
+    } else {
+        0.0
+    };
 
-            // Create styled frame with thick colored border
-            let border_color = egui::Color32::from_rgba_unmultiplied(
-                camel_color.r(), camel_color.g(), camel_color.b(), alpha_u8
-            );
-            let bg_color = egui::Color32::from_rgba_unmultiplied(
-                (camel_color.r() as f32 * 0.3) as u8,
-                (camel_color.g() as f32 * 0.3) as u8,
-                (camel_color.b() as f32 * 0.3) as u8,
-                (alpha * 240.0) as u8,
-            );
+    // Fade out during last 0.5 seconds
+    let alpha = if ui_state.dice_popup_timer < 0.5 {
+        ui_state.dice_popup_timer / 0.5
+    } else {
+        1.0
+    };
+    let alpha_u8 = (alpha * 255.0) as u8;
 
-            let popup_frame = egui::Frame::new()
+    let (color_name, value, camel_color, is_crazy) = match last_roll {
+        LastRoll::Regular(color, value) => (
+            format!("{:?}", color),
+            *value,
+            camel_color_to_egui(*color),
+            false,
+        ),
+        LastRoll::Crazy(color, value) => (
+            format!("{:?}", color),
+            *value,
+            crazy_camel_color_to_egui(*color),
+            true,
+        ),
+    };
+
+    // Movement text
+    let move_text = if is_crazy {
+        format!("{} backwards!", value)
+    } else {
+        format!("{} spaces!", value)
+    };
+
+    // Create styled frame with camel color border
+    let border_color = egui::Color32::from_rgba_unmultiplied(
+        camel_color.r(),
+        camel_color.g(),
+        camel_color.b(),
+        alpha_u8,
+    );
+    let bg_color = egui::Color32::from_rgba_unmultiplied(40, 40, 50, (alpha * 240.0) as u8);
+
+    // Position the toast at top-center, sliding down from the top panel
+    let toast_y = y_offset;
+
+    egui::Area::new(egui::Id::new("dice_toast_floating"))
+        .anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, toast_y))
+        .order(egui::Order::Foreground)
+        .show(ctx, |ui| {
+            let toast_frame = egui::Frame::new()
                 .fill(bg_color)
-                .stroke(egui::Stroke::new(4.0, border_color))
-                .corner_radius(egui::CornerRadius::same(12))
-                .inner_margin(egui::Margin::symmetric(24, 16))
+                .stroke(egui::Stroke::new(2.0, border_color))
+                .corner_radius(egui::CornerRadius::same(8))
+                .inner_margin(egui::Margin::symmetric(12, 8))
                 .shadow(egui::epaint::Shadow {
                     offset: [0, 4],
-                    blur: 16,
-                    spread: 2,
+                    blur: 8,
+                    spread: 0,
                     color: egui::Color32::from_rgba_unmultiplied(0, 0, 0, (alpha * 100.0) as u8),
                 });
 
-            egui::Window::new("Dice Roll")
-                .collapsible(false)
-                .resizable(false)
-                .title_bar(false)
-                .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, -80.0))
-                .frame(popup_frame)
-                .show(ctx, |ui| {
-                    // Apply scale transform via spacing
-                    let scaled_size = 36.0 * scale;
+            toast_frame.show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    // Mini camel silhouette
+                    let silhouette_size = egui::vec2(28.0, 21.0);
+                    let (rect, _) = ui.allocate_exact_size(silhouette_size, egui::Sense::hover());
+                    let border = egui::Color32::from_rgba_unmultiplied(
+                        (camel_color.r() as f32 * 0.5) as u8,
+                        (camel_color.g() as f32 * 0.5) as u8,
+                        (camel_color.b() as f32 * 0.5) as u8,
+                        alpha_u8,
+                    );
+                    let color_with_alpha = egui::Color32::from_rgba_unmultiplied(
+                        camel_color.r(),
+                        camel_color.g(),
+                        camel_color.b(),
+                        alpha_u8,
+                    );
+                    draw_camel_silhouette(ui.painter(), rect, color_with_alpha, border);
 
-                    ui.vertical_centered(|ui| {
-                        // Camel name
-                        ui.label(
-                            egui::RichText::new(&text)
-                                .size(scaled_size)
-                                .strong()
-                                .color(egui::Color32::from_rgba_unmultiplied(255, 255, 255, alpha_u8)),
-                        );
+                    ui.add_space(4.0);
 
-                        // Dice pips display
-                        ui.add_space(8.0 * scale);
-                        let pip_size = 8.0 * scale;
-                        let pip_spacing = 12.0 * scale;
-                        let box_size = 50.0 * scale;
+                    // Color name in camel color
+                    ui.label(egui::RichText::new(&color_name).size(16.0).strong().color(
+                        egui::Color32::from_rgba_unmultiplied(
+                            camel_color.r(),
+                            camel_color.g(),
+                            camel_color.b(),
+                            alpha_u8,
+                        ),
+                    ));
 
-                        let (rect, _) = ui.allocate_exact_size(
-                            egui::vec2(box_size, box_size),
-                            egui::Sense::hover()
-                        );
+                    // "moves" text
+                    ui.label(egui::RichText::new("moves").size(16.0).color(
+                        egui::Color32::from_rgba_unmultiplied(200, 200, 200, alpha_u8),
+                    ));
 
-                        // Draw dice background
-                        ui.painter().rect_filled(
-                            rect,
-                            8.0 * scale,
-                            border_color,
-                        );
-
-                        // Draw pips based on value
-                        let pip_color = if is_crazy && matches!(last_roll, LastRoll::Crazy(CrazyCamelColor::White, _)) {
-                            egui::Color32::from_rgba_unmultiplied(40, 40, 40, alpha_u8)
-                        } else {
-                            egui::Color32::from_rgba_unmultiplied(255, 255, 255, alpha_u8)
-                        };
-
-                        let center = rect.center();
-                        match value {
-                            1 => {
-                                ui.painter().circle_filled(center, pip_size, pip_color);
-                            }
-                            2 => {
-                                ui.painter().circle_filled(
-                                    center + egui::vec2(-pip_spacing, -pip_spacing),
-                                    pip_size,
-                                    pip_color,
-                                );
-                                ui.painter().circle_filled(
-                                    center + egui::vec2(pip_spacing, pip_spacing),
-                                    pip_size,
-                                    pip_color,
-                                );
-                            }
-                            3 => {
-                                ui.painter().circle_filled(
-                                    center + egui::vec2(-pip_spacing, -pip_spacing),
-                                    pip_size,
-                                    pip_color,
-                                );
-                                ui.painter().circle_filled(center, pip_size, pip_color);
-                                ui.painter().circle_filled(
-                                    center + egui::vec2(pip_spacing, pip_spacing),
-                                    pip_size,
-                                    pip_color,
-                                );
-                            }
-                            _ => {
-                                ui.painter().circle_filled(center, pip_size, pip_color);
-                            }
-                        }
-
-                        ui.add_space(8.0 * scale);
-
-                        // Movement text
-                        let move_text = if is_crazy {
-                            format!("Moves {} backwards!", value)
-                        } else {
-                            format!("Moves {} spaces!", value)
-                        };
-
-                        ui.label(
-                            egui::RichText::new(&move_text)
-                                .size(scaled_size * 0.6)
-                                .color(egui::Color32::from_rgba_unmultiplied(200, 200, 200, alpha_u8)),
-                        );
-                    });
+                    // Movement amount
+                    ui.label(egui::RichText::new(&move_text).size(16.0).strong().color(
+                        egui::Color32::from_rgba_unmultiplied(255, 255, 255, alpha_u8),
+                    ));
                 });
-        }
-    }
+            });
+        });
 
+    // Request repaint for smooth animation
+    ctx.request_repaint();
+}
+
+fn render_dice_toast(ui: &mut egui::Ui, ui_state: &UiState) {
+    // Safety check
+    let Some(ref last_roll) = ui_state.last_roll else {
+        return;
+    };
+
+    // Calculate animation phases
+    let total_duration = match last_roll {
+        LastRoll::Regular(_, _) => 2.0,
+        LastRoll::Crazy(_, _) => 2.5,
+    };
+
+    let timer = ui_state.dice_popup_timer.max(0.0);
+    let time_elapsed = (total_duration - timer).max(0.0);
+
+    // Wipe-down animation
+    let wipe_duration = 0.2;
+    let y_offset = if time_elapsed < wipe_duration {
+        let t = (time_elapsed / wipe_duration).clamp(0.0, 1.0);
+        -20.0 * (1.0 - t)
+    } else {
+        0.0
+    };
+
+    // Fade out
+    let alpha = if timer < 0.5 { timer / 0.5 } else { 1.0 };
+    let alpha_u8 = (alpha * 255.0) as u8;
+
+    let (color_name, value, camel_color, is_crazy) = match last_roll {
+        LastRoll::Regular(color, value) => (
+            format!("{:?}", color),
+            *value,
+            camel_color_to_egui(*color),
+            false,
+        ),
+        LastRoll::Crazy(color, value) => (
+            format!("{:?}", color),
+            *value,
+            crazy_camel_color_to_egui(*color),
+            true,
+        ),
+    };
+
+    let move_text = if is_crazy {
+        format!("{} backwards!", value)
+    } else {
+        format!("{} {}", value, if value == 1 { "space" } else { "spaces" })
+    };
+
+    let border_color = egui::Color32::from_rgba_unmultiplied(
+        camel_color.r(),
+        camel_color.g(),
+        camel_color.b(),
+        alpha_u8,
+    );
+    let bg_color = egui::Color32::from_rgba_unmultiplied(30, 30, 35, (alpha * 240.0) as u8);
+
+    ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
+        ui.add_space(8.0 + y_offset);
+
+        let shadow = egui::Shadow {
+            offset: [2, 2],
+            blur: 10,
+            spread: 0,
+            color: egui::Color32::from_black_alpha(96),
+        };
+
+        let toast_frame = egui::Frame::new()
+            .fill(bg_color)
+            .stroke(egui::Stroke::new(2.0, border_color))
+            .corner_radius(egui::CornerRadius::same(6))
+            .inner_margin(egui::Margin::symmetric(12, 8))
+            .shadow(shadow); // Use the manually created shadow
+
+        toast_frame.show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 8.0;
+
+                // Mini camel silhouette
+                let silhouette_size = egui::vec2(24.0, 18.0);
+                let (rect, _) = ui.allocate_exact_size(silhouette_size, egui::Sense::hover());
+
+                let fill_color = egui::Color32::from_rgba_unmultiplied(
+                    camel_color.r(),
+                    camel_color.g(),
+                    camel_color.b(),
+                    alpha_u8,
+                );
+
+                draw_camel_silhouette(ui.painter(), rect, fill_color, fill_color);
+
+                ui.label(
+                    egui::RichText::new(&color_name)
+                        .size(16.0)
+                        .strong()
+                        .color(fill_color),
+                );
+
+                ui.label(egui::RichText::new("moves").size(14.0).color(
+                    egui::Color32::from_rgba_unmultiplied(200, 200, 200, alpha_u8),
+                ));
+
+                ui.label(egui::RichText::new(&move_text).size(16.0).strong().color(
+                    egui::Color32::from_rgba_unmultiplied(255, 255, 255, alpha_u8),
+                ));
+            });
+        });
+    });
 }
 
 /// System to update UI state when a regular die roll happens
@@ -2862,7 +3520,7 @@ pub fn update_ui_on_roll(
         ui_state.last_roll = Some(LastRoll::Regular(event.color, event.value));
         ui_state.dice_popup_delay = 0.5; // Wait for shake animation to complete
         ui_state.dice_popup_timer = 2.0; // Show popup for 2 seconds after delay
-        // Start die roll animation
+                                         // Start die roll animation
         ui_state.die_roll_animation = Some(DieRollAnimation {
             die_color: Some(event.color),
             start_time: time.elapsed_secs_f64(),
@@ -2880,7 +3538,7 @@ pub fn update_ui_on_crazy_roll(
         ui_state.last_roll = Some(LastRoll::Crazy(event.color, event.value));
         ui_state.dice_popup_delay = 0.5; // Wait for shake animation to complete
         ui_state.dice_popup_timer = 2.5; // Show popup for 2.5 seconds after delay
-        // Start die roll animation (None = crazy die, gray color)
+                                         // Start die roll animation (None = crazy die, gray color)
         ui_state.die_roll_animation = Some(DieRollAnimation {
             die_color: None, // Crazy die
             start_time: time.elapsed_secs_f64(),
@@ -2889,10 +3547,7 @@ pub fn update_ui_on_crazy_roll(
 }
 
 /// System to update dice popup timer
-pub fn update_dice_popup_timer(
-    time: Res<Time>,
-    mut ui_state: ResMut<UiState>,
-) {
+pub fn update_dice_popup_timer(time: Res<Time>, mut ui_state: ResMut<UiState>) {
     // Count down delay first (waits for dice shake animation)
     if ui_state.dice_popup_delay > 0.0 {
         ui_state.dice_popup_delay -= time.delta_secs();
@@ -2919,7 +3574,7 @@ pub fn update_dice_popup_timer(
         let flip_speed = 3.0; // ~0.33 second animation
         ui_state.pyramid_flip_anim += time.delta_secs() * flip_speed;
         if ui_state.pyramid_flip_anim >= 1.0 {
-            ui_state.pyramid_flip_anim = 0.0;  // Animation complete
+            ui_state.pyramid_flip_anim = 0.0; // Animation complete
         }
     }
 
@@ -2935,12 +3590,17 @@ pub fn update_dice_popup_timer(
 /// Row height constant for camel position animations
 const CAMEL_POSITION_ROW_HEIGHT: f32 = 46.0; // row height including spacing
 const CAMEL_POSITION_ANIMATION_SPEED: f32 = 8.0; // How fast positions animate
+const PODIUM_ANIMATION_SPEED: f32 = 6.0; // How fast podium hop animates
+
+/// Podium heights for standings display
+pub const GOLD_PODIUM_HEIGHT: f32 = 10.0; // 1st place podium (twice silver)
+pub const SILVER_PODIUM_HEIGHT: f32 = 5.0; // 2nd place podium
 
 /// System to update camel position animations
 pub fn update_camel_position_animations(
     time: Res<Time>,
     mut animations: ResMut<CamelPositionAnimations>,
-    camels: Query<(&Camel, &BoardPosition)>,
+    camels: Query<(&Camel, &BoardPosition), Without<PendingInitialMove>>,
 ) {
     // Get current camel order (sorted by position)
     let mut camel_positions: Vec<(CamelColor, u8, u8)> = camels
@@ -2958,6 +3618,15 @@ pub fn update_camel_position_animations(
             // Find old rank for this color
             let old_rank = animations.last_order.iter().position(|&c| c == color);
 
+            // Calculate target podium height based on rank
+            let target_podium = if new_rank == 0 {
+                -GOLD_PODIUM_HEIGHT // 1st place - gold podium (negative = up)
+            } else if new_rank == 1 {
+                -SILVER_PODIUM_HEIGHT // 2nd place - silver podium
+            } else {
+                0.0 // No podium for others
+            };
+
             // Find or create animation entry for this color
             let anim = animations.positions.iter_mut().find(|a| a.color == color);
 
@@ -2968,6 +3637,7 @@ pub fn update_camel_position_animations(
                     anim.current_y_offset = -rank_difference as f32 * CAMEL_POSITION_ROW_HEIGHT;
                 }
                 anim.target_y_offset = 0.0;
+                anim.target_podium_y = target_podium;
             } else {
                 // New camel - add animation entry
                 let initial_offset = if let Some(old_rank) = old_rank {
@@ -2980,18 +3650,41 @@ pub fn update_camel_position_animations(
                     color,
                     current_y_offset: initial_offset,
                     target_y_offset: 0.0,
+                    current_podium_y: target_podium, // Start at target for new camels
+                    target_podium_y: target_podium,
                 });
             }
         }
 
-        animations.last_order = current_order;
+        animations.last_order = current_order.clone();
+    }
+
+    // Update target podium heights based on current order (even if order hasn't changed)
+    // This ensures podiums are correct after initialization
+    for (rank, &color) in current_order.iter().enumerate() {
+        let target_podium = if rank == 0 {
+            -GOLD_PODIUM_HEIGHT
+        } else if rank == 1 {
+            -SILVER_PODIUM_HEIGHT
+        } else {
+            0.0
+        };
+
+        if let Some(anim) = animations.positions.iter_mut().find(|a| a.color == color) {
+            anim.target_podium_y = target_podium;
+        }
     }
 
     // Animate offsets towards targets
     let dt = time.delta_secs();
     for anim in &mut animations.positions {
+        // Animate horizontal slide
         if (anim.current_y_offset - anim.target_y_offset).abs() > 0.1 {
-            let direction = if anim.current_y_offset < anim.target_y_offset { 1.0 } else { -1.0 };
+            let direction = if anim.current_y_offset < anim.target_y_offset {
+                1.0
+            } else {
+                -1.0
+            };
             let step = CAMEL_POSITION_ANIMATION_SPEED * dt * CAMEL_POSITION_ROW_HEIGHT;
             anim.current_y_offset += direction * step;
 
@@ -3003,6 +3696,26 @@ pub fn update_camel_position_animations(
             }
         } else {
             anim.current_y_offset = anim.target_y_offset;
+        }
+
+        // Animate podium hop (vertical)
+        if (anim.current_podium_y - anim.target_podium_y).abs() > 0.1 {
+            let direction = if anim.current_podium_y < anim.target_podium_y {
+                1.0
+            } else {
+                -1.0
+            };
+            let step = PODIUM_ANIMATION_SPEED * dt * GOLD_PODIUM_HEIGHT;
+            anim.current_podium_y += direction * step;
+
+            // Clamp to target if we overshoot
+            if direction > 0.0 && anim.current_podium_y > anim.target_podium_y {
+                anim.current_podium_y = anim.target_podium_y;
+            } else if direction < 0.0 && anim.current_podium_y < anim.target_podium_y {
+                anim.current_podium_y = anim.target_podium_y;
+            }
+        } else {
+            anim.current_podium_y = anim.target_podium_y;
         }
     }
 }
@@ -3018,7 +3731,7 @@ pub fn leg_scoring_modal_ui(
     mut player_pyramid_tokens: Option<ResMut<PlayerPyramidTokens>>,
     mut turn_state: Option<ResMut<TurnState>>,
     mut placed_tiles: Option<ResMut<PlacedSpectatorTiles>>,
-    camels: Query<(&Camel, &BoardPosition)>,
+    camels: Query<(&Camel, &BoardPosition), Without<PendingInitialMove>>,
     spectator_tile_entities: Query<Entity, With<SpectatorTile>>,
     dice_sprite_entities: Query<Entity, With<crate::systems::animation::DiceSprite>>,
     mut commands: Commands,
@@ -3027,7 +3740,9 @@ pub fn leg_scoring_modal_ui(
         return;
     }
 
-    let Some(ref mut players) = players else { return };
+    let Some(ref mut players) = players else {
+        return;
+    };
     let Ok(ctx) = contexts.ctx_mut() else { return };
 
     // Calculate scores for display
@@ -3068,16 +3783,24 @@ pub fn leg_scoring_modal_ui(
                 0
             };
 
-            score_changes.push((player.name.clone(), leg_bet_total, bet_details, pyramid_tokens));
+            score_changes.push((
+                player.name.clone(),
+                leg_bet_total,
+                bet_details,
+                pyramid_tokens,
+            ));
         }
     }
 
     // Get current standings for display (INCLUDING leg earnings from this leg)
-    let mut sorted_players: Vec<_> = players.players.iter()
+    let mut sorted_players: Vec<_> = players
+        .players
+        .iter()
         .enumerate()
         .map(|(idx, p)| {
             // Calculate total leg earnings for this player
-            let leg_earnings = score_changes.get(idx)
+            let leg_earnings = score_changes
+                .get(idx)
                 .map(|(_, leg_bet_total, _, pyramid_tokens)| {
                     *leg_bet_total + (*pyramid_tokens as i32)
                 })
@@ -3120,9 +3843,16 @@ pub fn leg_scoring_modal_ui(
                                     (color.g() as f32 * 0.5) as u8,
                                     (color.b() as f32 * 0.5) as u8,
                                 );
-                                let (rect, _) = ui.allocate_exact_size(egui::vec2(40.0, 30.0), egui::Sense::hover());
+                                let (rect, _) = ui.allocate_exact_size(
+                                    egui::vec2(40.0, 30.0),
+                                    egui::Sense::hover(),
+                                );
                                 draw_camel_silhouette(ui.painter(), rect, color, border_color);
-                                ui.label(egui::RichText::new(format!("{:?}", first)).size(16.0).strong());
+                                ui.label(
+                                    egui::RichText::new(format!("{:?}", first))
+                                        .size(16.0)
+                                        .strong(),
+                                );
                             });
                         }
                         if let Some(second) = second_place {
@@ -3134,9 +3864,16 @@ pub fn leg_scoring_modal_ui(
                                     (color.g() as f32 * 0.5) as u8,
                                     (color.b() as f32 * 0.5) as u8,
                                 );
-                                let (rect, _) = ui.allocate_exact_size(egui::vec2(40.0, 30.0), egui::Sense::hover());
+                                let (rect, _) = ui.allocate_exact_size(
+                                    egui::vec2(40.0, 30.0),
+                                    egui::Sense::hover(),
+                                );
                                 draw_camel_silhouette(ui.painter(), rect, color, border_color);
-                                ui.label(egui::RichText::new(format!("{:?}", second)).size(16.0).strong());
+                                ui.label(
+                                    egui::RichText::new(format!("{:?}", second))
+                                        .size(16.0)
+                                        .strong(),
+                                );
                             });
                         }
 
@@ -3163,17 +3900,36 @@ pub fn leg_scoring_modal_ui(
                                     ui.horizontal_wrapped(|ui| {
                                         ui.label(egui::RichText::new(name).strong().size(13.0));
                                         ui.label(":");
-                                        ui.add_space(4.0);
 
                                         // Cards WITH individual earnings
                                         let card_size = egui::vec2(22.0, 30.0);
                                         for (camel, value, change) in details {
-                                            let (rect, _) = ui.allocate_exact_size(card_size, egui::Sense::hover());
-                                            draw_mini_leg_bet_card(ui.painter(), rect, *camel, *value);
+                                            let (rect, _) = ui.allocate_exact_size(
+                                                card_size,
+                                                egui::Sense::hover(),
+                                            );
+                                            draw_mini_leg_bet_card(
+                                                ui.painter(),
+                                                rect,
+                                                *camel,
+                                                *value,
+                                            );
 
-                                            let change_text = if *change > 0 { format!("+${}", change) } else { "-$1".to_string() };
-                                            let change_color = if *change > 0 { egui::Color32::LIGHT_GREEN } else { egui::Color32::from_rgb(255, 100, 100) };
-                                            ui.label(egui::RichText::new(&change_text).size(11.0).color(change_color));
+                                            let change_text = if *change > 0 {
+                                                format!("+${}", change)
+                                            } else {
+                                                "-$1".to_string()
+                                            };
+                                            let change_color = if *change > 0 {
+                                                egui::Color32::LIGHT_GREEN
+                                            } else {
+                                                egui::Color32::from_rgb(255, 100, 100)
+                                            };
+                                            ui.label(
+                                                egui::RichText::new(&change_text)
+                                                    .size(11.0)
+                                                    .color(change_color),
+                                            );
                                             ui.add_space(2.0);
                                         }
 
@@ -3182,20 +3938,34 @@ pub fn leg_scoring_modal_ui(
                                             ui.add_space(4.0);
                                             let token_size = 16.0;
                                             let token_spacing = 12.0;
-                                            let total_width = token_size + (pyramid_tokens.saturating_sub(1) as f32 * token_spacing);
+                                            let total_width = token_size
+                                                + (pyramid_tokens.saturating_sub(1) as f32
+                                                    * token_spacing);
                                             let (tokens_rect, _) = ui.allocate_exact_size(
                                                 egui::vec2(total_width, token_size),
-                                                egui::Sense::hover()
+                                                egui::Sense::hover(),
                                             );
                                             for t in 0..*pyramid_tokens {
                                                 let token_center = egui::pos2(
-                                                    tokens_rect.left() + token_size / 2.0 + (t as f32 * token_spacing),
-                                                    tokens_rect.center().y
+                                                    tokens_rect.left()
+                                                        + token_size / 2.0
+                                                        + (t as f32 * token_spacing),
+                                                    tokens_rect.center().y,
                                                 );
-                                                draw_pyramid_token_icon(ui.painter(), token_center, token_size);
+                                                draw_pyramid_token_icon(
+                                                    ui.painter(),
+                                                    token_center,
+                                                    token_size,
+                                                );
                                             }
-                                            ui.label(egui::RichText::new(format!("+${}", pyramid_tokens))
-                                                .size(11.0).color(egui::Color32::GOLD));
+                                            ui.label(
+                                                egui::RichText::new(format!(
+                                                    "+${}",
+                                                    pyramid_tokens
+                                                ))
+                                                .size(11.0)
+                                                .color(egui::Color32::GOLD),
+                                            );
                                         }
 
                                         // Total - wraps only if needed
@@ -3203,11 +3973,22 @@ pub fn leg_scoring_modal_ui(
                                         if total != 0 {
                                             ui.add_space(8.0);
                                             let (text, color) = if total > 0 {
-                                                (format!("= +${}", total), egui::Color32::LIGHT_GREEN)
+                                                (
+                                                    format!("= +${}", total),
+                                                    egui::Color32::LIGHT_GREEN,
+                                                )
                                             } else {
-                                                (format!("= -${}", total.abs()), egui::Color32::from_rgb(255, 100, 100))
+                                                (
+                                                    format!("= -${}", total.abs()),
+                                                    egui::Color32::from_rgb(255, 100, 100),
+                                                )
                                             };
-                                            ui.label(egui::RichText::new(text).strong().size(13.0).color(color));
+                                            ui.label(
+                                                egui::RichText::new(text)
+                                                    .strong()
+                                                    .size(13.0)
+                                                    .color(color),
+                                            );
                                         }
                                     });
                                     ui.add_space(4.0);
@@ -3222,8 +4003,16 @@ pub fn leg_scoring_modal_ui(
                                         for (camel, value, change) in details {
                                             // Draw mini leg bet card
                                             let card_size = egui::vec2(28.0, 38.0);
-                                            let (rect, _) = ui.allocate_exact_size(card_size, egui::Sense::hover());
-                                            draw_mini_leg_bet_card(ui.painter(), rect, *camel, *value);
+                                            let (rect, _) = ui.allocate_exact_size(
+                                                card_size,
+                                                egui::Sense::hover(),
+                                            );
+                                            draw_mini_leg_bet_card(
+                                                ui.painter(),
+                                                rect,
+                                                *camel,
+                                                *value,
+                                            );
 
                                             // Show change next to card
                                             let change_text = if *change > 0 {
@@ -3236,7 +4025,11 @@ pub fn leg_scoring_modal_ui(
                                             } else {
                                                 egui::Color32::from_rgb(255, 100, 100)
                                             };
-                                            ui.label(egui::RichText::new(&change_text).size(12.0).color(change_color));
+                                            ui.label(
+                                                egui::RichText::new(&change_text)
+                                                    .size(12.0)
+                                                    .color(change_color),
+                                            );
                                             ui.add_space(4.0);
                                         }
 
@@ -3249,27 +4042,42 @@ pub fn leg_scoring_modal_ui(
                                             let token_spacing = 16.0;
 
                                             // Allocate space for all tokens
-                                            let total_width = token_size + (pyramid_tokens.saturating_sub(1) as f32 * token_spacing);
+                                            let total_width = token_size
+                                                + (pyramid_tokens.saturating_sub(1) as f32
+                                                    * token_spacing);
                                             let (tokens_rect, _) = ui.allocate_exact_size(
                                                 egui::vec2(total_width, token_size),
-                                                egui::Sense::hover()
+                                                egui::Sense::hover(),
                                             );
 
                                             // Draw each token
                                             for t in 0..*pyramid_tokens {
                                                 let token_center = egui::pos2(
-                                                    tokens_rect.left() + token_size / 2.0 + (t as f32 * token_spacing),
-                                                    tokens_rect.center().y
+                                                    tokens_rect.left()
+                                                        + token_size / 2.0
+                                                        + (t as f32 * token_spacing),
+                                                    tokens_rect.center().y,
                                                 );
-                                                draw_pyramid_token_icon(ui.painter(), token_center, token_size);
+                                                draw_pyramid_token_icon(
+                                                    ui.painter(),
+                                                    token_center,
+                                                    token_size,
+                                                );
                                             }
 
-                                            ui.label(egui::RichText::new(format!("+${}", pyramid_tokens))
-                                                .size(12.0).color(egui::Color32::GOLD));
+                                            ui.label(
+                                                egui::RichText::new(format!(
+                                                    "+${}",
+                                                    pyramid_tokens
+                                                ))
+                                                .size(12.0)
+                                                .color(egui::Color32::GOLD),
+                                            );
                                         }
 
                                         // Show total for this leg
-                                        let total_leg_earnings = *leg_bet_total + (*pyramid_tokens as i32);
+                                        let total_leg_earnings =
+                                            *leg_bet_total + (*pyramid_tokens as i32);
                                         if total_leg_earnings != 0 {
                                             ui.add_space(12.0);
                                             let total_text = if total_leg_earnings > 0 {
@@ -3282,7 +4090,12 @@ pub fn leg_scoring_modal_ui(
                                             } else {
                                                 egui::Color32::from_rgb(255, 100, 100)
                                             };
-                                            ui.label(egui::RichText::new(&total_text).strong().size(14.0).color(total_color));
+                                            ui.label(
+                                                egui::RichText::new(&total_text)
+                                                    .strong()
+                                                    .size(14.0)
+                                                    .color(total_color),
+                                            );
                                         }
                                     });
                                     ui.add_space(4.0);
@@ -3298,7 +4111,6 @@ pub fn leg_scoring_modal_ui(
                         // Only show heading on desktop to save vertical space on mobile
                         if ui_state.use_side_panels {
                             ui.heading(egui::RichText::new("Current Standings").size(20.0));
-                            ui.add_space(10.0);
                         }
 
                         for (rank, (name, money)) in sorted_players.iter().enumerate() {
@@ -3318,9 +4130,9 @@ pub fn leg_scoring_modal_ui(
 
                         ui.add_space(30.0);
 
-                        let button = egui::Button::new(egui::RichText::new("Continue to Next Leg").size(18.0))
-                            .min_size(egui::vec2(200.0, 50.0));
-                        if ui.add(button).clicked() {
+                        if desert_button(ui, "Start Next Leg", &DesertButtonStyle::medium())
+                            .clicked()
+                        {
                             should_continue = true;
                         }
                     });

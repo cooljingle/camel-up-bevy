@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use bevy::ecs::query::QueryFilter;
 use crate::components::*;
 use crate::systems::animation::{MovementAnimation, MultiStepMovementAnimation};
 
@@ -27,14 +28,17 @@ const CAMEL_HOP_DURATION: f32 = 0.15;
 /// Animation duration for simple vertical shifts (existing camels being displaced)
 const CAMEL_SHIFT_DURATION: f32 = 0.3;
 
-/// Generate waypoints for multi-step movement animation
+/// Generate waypoints for multi-step movement animation with stack-aware hopping
+/// For intermediate spaces, camels hop to the top of existing stacks
+/// For the final space, they land at their calculated target position
 fn generate_waypoints(
     board: &GameBoard,
     start_space: u8,
     end_space: u8,
-    stack_offset: f32,
+    final_stack_pos: u8,
     z_index: f32,
     backwards: bool,
+    stack_heights: &[u8],  // Stack height at each space (index = space)
 ) -> Vec<Vec3> {
     let mut waypoints = Vec::new();
 
@@ -43,7 +47,13 @@ fn generate_waypoints(
         let mut current = start_space;
         while current >= end_space {
             let base_pos = board.get_position(current);
-            waypoints.push(Vec3::new(base_pos.x, base_pos.y + stack_offset, z_index));
+            let stack_height = if current == end_space {
+                final_stack_pos
+            } else {
+                stack_heights.get(current as usize).copied().unwrap_or(0)
+            };
+            let y_offset = stack_height as f32 * 25.0;
+            waypoints.push(Vec3::new(base_pos.x, base_pos.y + y_offset, z_index));
             if current == 0 || current == end_space {
                 break;
             }
@@ -53,7 +63,13 @@ fn generate_waypoints(
         // Moving forwards
         for space in start_space..=end_space.min(TRACK_LENGTH - 1) {
             let base_pos = board.get_position(space);
-            waypoints.push(Vec3::new(base_pos.x, base_pos.y + stack_offset, z_index));
+            let stack_height = if space == end_space {
+                final_stack_pos
+            } else {
+                stack_heights.get(space as usize).copied().unwrap_or(0)
+            };
+            let y_offset = stack_height as f32 * 25.0;
+            waypoints.push(Vec3::new(base_pos.x, base_pos.y + y_offset, z_index));
         }
     }
 
@@ -157,6 +173,23 @@ pub fn move_camel_system(
 
         let final_space = target_space.min(TRACK_LENGTH - 1);
 
+        // Build stack heights array for intermediate hop positions
+        // Camels should hop onto top of existing stacks at each space
+        // Exclude the camels that are currently moving from the count
+        let mut stack_heights = [0u8; TRACK_LENGTH as usize];
+        for (entity, _, pos, _) in camels.iter() {
+            if pos.space_index < TRACK_LENGTH && !camels_to_move.contains(&entity) {
+                stack_heights[pos.space_index as usize] =
+                    stack_heights[pos.space_index as usize].max(pos.stack_position + 1);
+            }
+        }
+        for (entity, _, pos, _) in crazy_camels.iter() {
+            if pos.space_index < TRACK_LENGTH && !camels_to_move.contains(&entity) {
+                stack_heights[pos.space_index as usize] =
+                    stack_heights[pos.space_index as usize].max(pos.stack_position + 1);
+            }
+        }
+
         if land_underneath {
             // Landing underneath: shift existing camels up, place moving camels at bottom
             let num_moving = camel_stack_positions.len() as u8;
@@ -207,21 +240,24 @@ pub fn move_camel_system(
 
             for (i, (entity, _)) in camel_stack_positions.iter().enumerate() {
                 let new_stack_pos = i as u8;
-                let stack_offset = new_stack_pos as f32 * 25.0;
                 let z_index = 10.0 + new_stack_pos as f32;
 
-                // Generate waypoints from start to pre-desert-tile space, then add final position
+                // Generate waypoints from start to pre-desert-tile space
+                // Use stack_heights for intermediate hops, but the end of this segment
+                // isn't the final destination (mirage pushes back), so use stack_heights for it too
                 let mut waypoints = generate_waypoints(
                     &board,
                     start_space,
                     pre_spectator_space.min(TRACK_LENGTH - 1),
-                    stack_offset,
+                    stack_heights.get(pre_spectator_space.min(TRACK_LENGTH - 1) as usize).copied().unwrap_or(0),
                     z_index,
                     false,
+                    &stack_heights,
                 );
 
                 // Add final position after mirage effect (going back one space, underneath)
                 let final_base_pos = board.get_position(final_space);
+                let stack_offset = new_stack_pos as f32 * 25.0;
                 let final_pos = Vec3::new(final_base_pos.x, final_base_pos.y + stack_offset, z_index);
                 if waypoints.last() != Some(&final_pos) {
                     waypoints.push(final_pos);
@@ -258,22 +294,30 @@ pub fn move_camel_system(
 
             for (i, (entity, _old_stack_pos)) in camel_stack_positions.iter().enumerate() {
                 let new_stack_pos = target_stack_height + i as u8;
-                let stack_offset = new_stack_pos as f32 * 25.0;
                 let z_index = 10.0 + new_stack_pos as f32;
 
                 // Generate waypoints from start to pre-desert-tile space
+                // For intermediate hops, use stack_heights; for final position use new_stack_pos
+                let end_of_segment = pre_spectator_space.min(TRACK_LENGTH - 1);
+                let segment_final_stack = if final_space == end_of_segment {
+                    new_stack_pos
+                } else {
+                    stack_heights.get(end_of_segment as usize).copied().unwrap_or(0)
+                };
                 let mut waypoints = generate_waypoints(
                     &board,
                     start_space,
-                    pre_spectator_space.min(TRACK_LENGTH - 1),
-                    stack_offset,
+                    end_of_segment,
+                    segment_final_stack,
                     z_index,
                     false,
+                    &stack_heights,
                 );
 
                 // If oasis triggered, add extra space at the end
                 if final_space > pre_spectator_space {
                     let final_base_pos = board.get_position(final_space);
+                    let stack_offset = new_stack_pos as f32 * 25.0;
                     let final_pos = Vec3::new(final_base_pos.x, final_base_pos.y + stack_offset, z_index);
                     waypoints.push(final_pos);
                 }
@@ -355,10 +399,24 @@ pub fn move_crazy_camel_system(
             }
         }
 
+        // Build stack heights array for intermediate hop positions
+        let mut stack_heights = [0u8; TRACK_LENGTH as usize];
+        for (entity, _, pos, _) in camels.iter() {
+            if pos.space_index < TRACK_LENGTH && !entities_to_move.iter().any(|(e, _, _)| *e == entity) {
+                stack_heights[pos.space_index as usize] =
+                    stack_heights[pos.space_index as usize].max(pos.stack_position + 1);
+            }
+        }
+        for (entity, _, pos, _) in crazy_camels.iter() {
+            if pos.space_index < TRACK_LENGTH && !entities_to_move.iter().any(|(e, _, _)| *e == entity) {
+                stack_heights[pos.space_index as usize] =
+                    stack_heights[pos.space_index as usize].max(pos.stack_position + 1);
+            }
+        }
+
         // Move all the camels with multi-step backwards animation, landing on top
         for (i, (entity, _, is_crazy)) in entities_to_move.iter().enumerate() {
             let new_stack_pos = target_stack_height + i as u8;
-            let stack_offset = new_stack_pos as f32 * 25.0;
             let z_index = 10.0 + new_stack_pos as f32;
 
             // Generate waypoints for backwards movement
@@ -366,9 +424,10 @@ pub fn move_crazy_camel_system(
                 &board,
                 start_space,
                 target_space,
-                stack_offset,
+                new_stack_pos,
                 z_index,
                 true, // backwards
+                &stack_heights,
             );
 
             if *is_crazy {
@@ -387,8 +446,8 @@ pub fn move_crazy_camel_system(
 }
 
 /// Get the leading camel (first place)
-pub fn get_leading_camel(
-    camels: &Query<(&Camel, &BoardPosition)>,
+pub fn get_leading_camel<F: QueryFilter>(
+    camels: &Query<(&Camel, &BoardPosition), F>,
 ) -> Option<CamelColor> {
     let mut best: Option<(CamelColor, u8, u8)> = None; // (color, space, stack_pos)
 
@@ -408,8 +467,8 @@ pub fn get_leading_camel(
 }
 
 /// Get the second place camel
-pub fn get_second_place_camel(
-    camels: &Query<(&Camel, &BoardPosition)>,
+pub fn get_second_place_camel<F: QueryFilter>(
+    camels: &Query<(&Camel, &BoardPosition), F>,
 ) -> Option<CamelColor> {
     let mut rankings: Vec<(CamelColor, u8, u8)> = camels
         .iter()
@@ -425,8 +484,8 @@ pub fn get_second_place_camel(
 }
 
 /// Get the last place camel (for end-game betting)
-pub fn get_last_place_camel(
-    camels: &Query<(&Camel, &BoardPosition)>,
+pub fn get_last_place_camel<F: QueryFilter>(
+    camels: &Query<(&Camel, &BoardPosition), F>,
 ) -> Option<CamelColor> {
     let mut worst: Option<(CamelColor, u8, u8)> = None;
 

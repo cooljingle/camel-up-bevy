@@ -282,6 +282,33 @@
             font-weight: 400;
         }
 
+        /* Progress bar container */
+        .progress-bar-container {
+            width: 200px;
+            height: 12px;
+            background: #4a3520;
+            border-radius: 6px;
+            margin-top: 1rem;
+            overflow: hidden;
+            border: 2px solid #6B4A1A;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #d4a84b, #FFD700, #d4a84b);
+            background-size: 200% 100%;
+            border-radius: 4px;
+            width: 0%;
+            transition: width 0.3s ease-out;
+            animation: shimmer 2s linear infinite;
+        }
+
+        @keyframes shimmer {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+
         /* Animated dots */
         .dots::after {
             content: '';
@@ -384,7 +411,10 @@
             </div>
         </div>
 
-        <p class="progress">Loading game<span class="dots"></span></p>
+        <div class="progress-bar-container">
+            <div class="progress-bar" id="progress-bar"></div>
+        </div>
+        <p class="progress" id="progress-text">Preparing the desert<span class="dots"></span></p>
     </div>
 
     <!-- Fullscreen hint (desktop only) -->
@@ -411,6 +441,38 @@
 
         const loading = document.getElementById('loading');
         const fsHint = document.getElementById('fullscreen-hint');
+        const progressBar = document.getElementById('progress-bar');
+        const progressText = document.getElementById('progress-text');
+
+        // Loading messages - themed for the game
+        const loadingMessages = [
+            { text: 'Preparing the desert', progress: 10 },
+            { text: 'Gathering the camels', progress: 30 },
+            { text: 'Stacking the pyramid', progress: 50 },
+            { text: 'Shuffling betting tiles', progress: 70 },
+            { text: 'Setting up the race track', progress: 90 },
+            { text: 'Ready to race!', progress: 100 }
+        ];
+
+        let messageIndex = 0;
+        let loadingInterval = null;
+
+        // Animate progress messages
+        function updateProgress() {
+            if (messageIndex < loadingMessages.length) {
+                const msg = loadingMessages[messageIndex];
+                progressBar.style.width = msg.progress + '%';
+                progressText.innerHTML = msg.text + '<span class="dots"></span>';
+                messageIndex++;
+            }
+            if (messageIndex >= loadingMessages.length) {
+                clearInterval(loadingInterval);
+            }
+        }
+
+        // Start progress animation
+        loadingInterval = setInterval(updateProgress, 400);
+        updateProgress(); // Initial call
 
         // Force canvas to match viewport dimensions and trigger Bevy resize
         function resizeCanvas() {
@@ -458,7 +520,10 @@
                 }
             } catch (e) {
                 console.error('Failed to start game:', e);
-                loading.querySelector('.progress').textContent = 'Failed to start. Please refresh.';
+                clearInterval(loadingInterval);
+                progressBar.style.width = '100%';
+                progressBar.style.background = '#c45c3b';
+                progressText.textContent = 'Failed to start. Please refresh.';
             }
         }
 

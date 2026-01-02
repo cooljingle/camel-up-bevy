@@ -2,10 +2,42 @@
 //! Custom-drawn widgets that replace standard egui styling
 
 use bevy_egui::{egui, EguiContexts};
+use crate::components::{CamelColor, CrazyCamelColor};
 
 // ============================================================================
 // Color Palette - Desert Theme
 // ============================================================================
+
+/// Player colors for visual distinction (8 players max)
+pub const PLAYER_COLORS: [egui::Color32; 8] = [
+    egui::Color32::from_rgb(220, 50, 50),   // Red
+    egui::Color32::from_rgb(50, 120, 220),  // Blue
+    egui::Color32::from_rgb(50, 180, 80),   // Green
+    egui::Color32::from_rgb(220, 180, 50),  // Yellow
+    egui::Color32::from_rgb(180, 80, 220),  // Purple
+    egui::Color32::from_rgb(220, 130, 50),  // Orange
+    egui::Color32::from_rgb(80, 200, 200),  // Cyan
+    egui::Color32::from_rgb(200, 100, 150), // Pink
+];
+
+/// Convert CamelColor to egui Color32 for UI display
+pub fn camel_color_to_egui(color: CamelColor) -> egui::Color32 {
+    match color {
+        CamelColor::Blue => egui::Color32::from_rgb(50, 100, 230),
+        CamelColor::Green => egui::Color32::from_rgb(50, 200, 80),
+        CamelColor::Red => egui::Color32::from_rgb(230, 50, 50),
+        CamelColor::Yellow => egui::Color32::from_rgb(240, 230, 50),
+        CamelColor::Purple => egui::Color32::from_rgb(150, 50, 200),
+    }
+}
+
+/// Convert CrazyCamelColor to egui Color32 for UI display
+pub fn crazy_camel_color_to_egui(color: CrazyCamelColor) -> egui::Color32 {
+    match color {
+        CrazyCamelColor::Black => egui::Color32::from_rgb(40, 40, 40),
+        CrazyCamelColor::White => egui::Color32::from_rgb(240, 240, 240),
+    }
+}
 
 /// Sand - warm tan for backgrounds
 #[allow(dead_code)]
@@ -593,6 +625,515 @@ pub fn gold_tab(ui: &mut egui::Ui, text: &str, selected: bool) -> egui::Response
     }
 
     response
+}
+
+// ============================================================================
+// Desert Text Input - Themed text field
+// ============================================================================
+
+/// Configuration for desert text input appearance
+#[allow(dead_code)]
+pub struct DesertTextInputStyle {
+    pub width: f32,
+    pub height: f32,
+    pub font_size: f32,
+}
+
+impl Default for DesertTextInputStyle {
+    fn default() -> Self {
+        Self {
+            width: 150.0,
+            height: 32.0,
+            font_size: 14.0,
+        }
+    }
+}
+
+/// Draw a desert-themed text input field
+/// Returns the response and updated text value
+#[allow(dead_code)]
+pub fn desert_text_input(
+    ui: &mut egui::Ui,
+    text: &mut String,
+    style: &DesertTextInputStyle,
+) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(
+        egui::vec2(style.width, style.height),
+        egui::Sense::click(),
+    );
+
+    let has_focus = response.has_focus();
+    let is_hovered = response.hovered();
+
+    if ui.is_rect_visible(rect) {
+        let painter = ui.painter();
+
+        // Background - papyrus/cream color
+        let bg_color = if has_focus {
+            egui::Color32::from_rgb(0xFA, 0xF5, 0xE8) // Lighter when focused
+        } else {
+            PAPYRUS
+        };
+
+        // Draw shadow
+        let shadow_rect = rect.translate(egui::vec2(2.0, 2.0));
+        painter.rect_filled(
+            shadow_rect,
+            4.0,
+            egui::Color32::from_rgba_unmultiplied(0, 0, 0, 40),
+        );
+
+        // Draw background
+        painter.rect_filled(rect, 4.0, bg_color);
+
+        // Draw border - gold when focused, dark when not
+        let border_color = if has_focus {
+            GOLD_LIGHT
+        } else if is_hovered {
+            GOLD_DARK
+        } else {
+            STONE_DARK
+        };
+        let border_width = if has_focus { 2.0 } else { 1.5 };
+
+        painter.rect_stroke(
+            rect,
+            4.0,
+            egui::Stroke::new(border_width, border_color),
+            egui::epaint::StrokeKind::Outside,
+        );
+    }
+
+    // Create the actual text edit inside the rect
+    let text_rect = rect.shrink2(egui::vec2(8.0, 4.0));
+    let mut child_ui = ui.new_child(
+        egui::UiBuilder::new()
+            .max_rect(text_rect)
+            .layout(egui::Layout::left_to_right(egui::Align::Center)),
+    );
+
+    let text_response = child_ui.add(
+        egui::TextEdit::singleline(text)
+            .frame(false)
+            .font(egui::FontId::proportional(style.font_size))
+            .text_color(GOLD_OUTLINE)
+            .desired_width(text_rect.width()),
+    );
+
+    // Combine responses
+    response | text_response
+}
+
+// ============================================================================
+// Desert Toggle - Themed on/off switch
+// ============================================================================
+
+/// Draw a desert-themed toggle switch
+/// Returns (left_clicked, right_clicked)
+#[allow(dead_code)]
+pub fn desert_toggle(
+    ui: &mut egui::Ui,
+    id: impl std::hash::Hash,
+    selected: bool,
+    left_text: &str,
+    right_text: &str,
+) -> (bool, bool) {
+    let size = egui::vec2(100.0, 28.0);
+    let half_width = size.x / 2.0;
+    let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
+    let base_id = ui.make_persistent_id(id);
+
+    let mut left_clicked = false;
+    let mut right_clicked = false;
+
+    if ui.is_rect_visible(rect) {
+        let painter = ui.painter();
+
+        // Draw shadow
+        let shadow_rect = rect.translate(egui::vec2(2.0, 2.0));
+        painter.rect_filled(
+            shadow_rect,
+            4.0,
+            egui::Color32::from_rgba_unmultiplied(0, 0, 0, 40),
+        );
+
+        // Draw background
+        painter.rect_filled(rect, 4.0, STONE);
+
+        // Draw border
+        painter.rect_stroke(
+            rect,
+            4.0,
+            egui::Stroke::new(1.5, GOLD_OUTLINE),
+            egui::epaint::StrokeKind::Outside,
+        );
+
+        // Left half
+        let left_rect = egui::Rect::from_min_size(rect.min, egui::vec2(half_width, size.y));
+        let left_response = ui.interact(left_rect, base_id.with("left"), egui::Sense::click());
+        left_clicked = left_response.clicked();
+
+        let left_bg = if !selected {
+            GOLD_LIGHT
+        } else if left_response.hovered() {
+            STONE_LIGHT
+        } else {
+            STONE
+        };
+
+        painter.rect_filled(
+            left_rect.shrink(2.0),
+            egui::CornerRadius { nw: 3, sw: 3, ne: 0, se: 0 },
+            left_bg,
+        );
+
+        painter.text(
+            left_rect.center(),
+            egui::Align2::CENTER_CENTER,
+            left_text,
+            egui::FontId::proportional(12.0),
+            if !selected { GOLD_OUTLINE } else { PAPYRUS },
+        );
+
+        // Right half
+        let right_rect = egui::Rect::from_min_size(
+            rect.min + egui::vec2(half_width, 0.0),
+            egui::vec2(half_width, size.y),
+        );
+        let right_response = ui.interact(right_rect, base_id.with("right"), egui::Sense::click());
+        right_clicked = right_response.clicked();
+
+        let right_bg = if selected {
+            GOLD_LIGHT
+        } else if right_response.hovered() {
+            STONE_LIGHT
+        } else {
+            STONE
+        };
+
+        painter.rect_filled(
+            right_rect.shrink(2.0),
+            egui::CornerRadius { nw: 0, sw: 0, ne: 3, se: 3 },
+            right_bg,
+        );
+
+        painter.text(
+            right_rect.center(),
+            egui::Align2::CENTER_CENTER,
+            right_text,
+            egui::FontId::proportional(12.0),
+            if selected { GOLD_OUTLINE } else { PAPYRUS },
+        );
+
+        // Draw divider line
+        painter.line_segment(
+            [
+                egui::pos2(rect.min.x + half_width, rect.min.y + 2.0),
+                egui::pos2(rect.min.x + half_width, rect.max.y - 2.0),
+            ],
+            egui::Stroke::new(1.0, GOLD_OUTLINE),
+        );
+    }
+
+    (left_clicked, right_clicked)
+}
+
+// ============================================================================
+// Desert Combobox - Themed dropdown
+// ============================================================================
+
+/// Draw a desert-themed combobox/dropdown
+/// Returns the response
+#[allow(dead_code)]
+pub fn desert_combobox<T: PartialEq + Clone>(
+    ui: &mut egui::Ui,
+    id: impl std::hash::Hash,
+    current: &mut T,
+    options: &[T],
+    option_labels: &[&str],
+) -> egui::Response {
+    let button_width = 120.0;
+    let button_height = 32.0;
+
+    let current_label = options
+        .iter()
+        .position(|o| o == current)
+        .map(|i| option_labels[i])
+        .unwrap_or("Select...");
+
+    let popup_id = ui.make_persistent_id(id);
+    #[allow(deprecated)]
+    let is_open = ui.memory(|m| m.is_popup_open(popup_id));
+
+    // Draw the button
+    let (rect, response) = ui.allocate_exact_size(
+        egui::vec2(button_width, button_height),
+        egui::Sense::click(),
+    );
+
+    if ui.is_rect_visible(rect) {
+        let painter = ui.painter();
+        let is_hovered = response.hovered() || is_open;
+
+        // Shadow
+        let shadow_rect = rect.translate(egui::vec2(2.0, 2.0));
+        painter.rect_filled(
+            shadow_rect,
+            4.0,
+            egui::Color32::from_rgba_unmultiplied(0, 0, 0, 40),
+        );
+
+        // Background
+        let bg_color = if is_open {
+            STONE_LIGHT
+        } else if is_hovered {
+            STONE_LIGHT
+        } else {
+            STONE
+        };
+        painter.rect_filled(rect, 4.0, bg_color);
+
+        // Border
+        let border_color = if is_open || is_hovered { GOLD_LIGHT } else { GOLD_OUTLINE };
+        painter.rect_stroke(
+            rect,
+            4.0,
+            egui::Stroke::new(1.5, border_color),
+            egui::epaint::StrokeKind::Outside,
+        );
+
+        // Text
+        let text_rect = rect.shrink2(egui::vec2(8.0, 0.0));
+        painter.text(
+            egui::pos2(text_rect.left() + 4.0, text_rect.center().y),
+            egui::Align2::LEFT_CENTER,
+            current_label,
+            egui::FontId::proportional(14.0),
+            PAPYRUS,
+        );
+
+        // Dropdown arrow
+        let arrow_center = egui::pos2(rect.right() - 12.0, rect.center().y);
+        let arrow_size = 5.0;
+        let arrow_points = if is_open {
+            // Up arrow
+            vec![
+                egui::pos2(arrow_center.x - arrow_size, arrow_center.y + arrow_size * 0.5),
+                egui::pos2(arrow_center.x + arrow_size, arrow_center.y + arrow_size * 0.5),
+                egui::pos2(arrow_center.x, arrow_center.y - arrow_size * 0.5),
+            ]
+        } else {
+            // Down arrow
+            vec![
+                egui::pos2(arrow_center.x - arrow_size, arrow_center.y - arrow_size * 0.5),
+                egui::pos2(arrow_center.x + arrow_size, arrow_center.y - arrow_size * 0.5),
+                egui::pos2(arrow_center.x, arrow_center.y + arrow_size * 0.5),
+            ]
+        };
+        painter.add(egui::Shape::convex_polygon(
+            arrow_points,
+            PAPYRUS,
+            egui::Stroke::NONE,
+        ));
+    }
+
+    // Handle click
+    if response.clicked() {
+        #[allow(deprecated)]
+        ui.memory_mut(|m| m.toggle_popup(popup_id));
+    }
+
+    // Show popup
+    if is_open {
+        let area_response = egui::Area::new(popup_id)
+            .order(egui::Order::Foreground)
+            .fixed_pos(rect.left_bottom())
+            .show(ui.ctx(), |ui| {
+                egui::Frame::new()
+                    .fill(egui::Color32::from_rgb(50, 45, 40))
+                    .stroke(egui::Stroke::new(1.5, GOLD_OUTLINE))
+                    .corner_radius(4.0)
+                    .shadow(egui::epaint::Shadow {
+                        offset: [2, 4],
+                        blur: 8,
+                        spread: 2,
+                        color: egui::Color32::from_rgba_unmultiplied(0, 0, 0, 100),
+                    })
+                    .show(ui, |ui| {
+                        ui.set_min_width(button_width - 4.0);
+                        for (i, option) in options.iter().enumerate() {
+                            let label = option_labels[i];
+                            let is_selected = option == current;
+
+                            let option_response = ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(label)
+                                        .size(14.0)
+                                        .color(if is_selected { GOLD_LIGHT } else { PAPYRUS }),
+                                )
+                                .sense(egui::Sense::click()),
+                            );
+
+                            if option_response.clicked() {
+                                *current = option.clone();
+                                #[allow(deprecated)]
+                                ui.memory_mut(|m| m.toggle_popup(popup_id));
+                            }
+
+                            if option_response.hovered() {
+                                ui.painter().rect_filled(
+                                    option_response.rect,
+                                    2.0,
+                                    egui::Color32::from_rgba_unmultiplied(255, 255, 255, 20),
+                                );
+                            }
+                        }
+                    });
+            });
+
+        // Close if clicked outside
+        if ui.input(|i| i.pointer.any_click()) && !area_response.response.rect.contains(ui.input(|i| i.pointer.hover_pos().unwrap_or_default())) && !rect.contains(ui.input(|i| i.pointer.hover_pos().unwrap_or_default())) {
+            #[allow(deprecated)]
+            ui.memory_mut(|m| m.toggle_popup(popup_id));
+        }
+    }
+
+    response
+}
+
+// ============================================================================
+// Layout Constants - Centralized sizing for responsive UI
+// ============================================================================
+
+/// Desktop layout sizes
+#[allow(dead_code)]
+pub mod desktop {
+    /// Side panel minimum width
+    pub const SIDE_PANEL_MIN_WIDTH: f32 = 280.0;
+    /// Avatar size in player list
+    pub const AVATAR_SIZE: f32 = 40.0;
+    /// Mini leg bet card dimensions
+    pub const MINI_LEG_BET_WIDTH: f32 = 16.0;
+    pub const MINI_LEG_BET_HEIGHT: f32 = 20.0;
+    pub const MINI_LEG_BET_OVERLAP: f32 = 8.0;
+    /// Pyramid token size and spacing
+    pub const PYRAMID_TOKEN_SIZE: f32 = 18.0;
+    pub const PYRAMID_TOKEN_SPACING: f32 = 14.0;
+    /// Race bet square buttons
+    pub const RACE_BET_BTN_SIZE: f32 = 70.0;
+}
+
+/// Mobile layout sizes
+#[allow(dead_code)]
+pub mod mobile {
+    /// Minimum card width for player cards in grid
+    pub const MIN_PLAYER_CARD_WIDTH: f32 = 80.0;
+    /// Avatar size in compact cards
+    pub const AVATAR_SIZE: f32 = 22.0;
+    /// Mini leg bet card dimensions (smaller for mobile)
+    pub const MINI_LEG_BET_WIDTH: f32 = 14.0;
+    pub const MINI_LEG_BET_HEIGHT: f32 = 18.0;
+    pub const MINI_LEG_BET_OVERLAP: f32 = 7.0;
+    /// Pyramid token size and spacing (smaller for mobile)
+    pub const PYRAMID_TOKEN_SIZE: f32 = 12.0;
+    pub const PYRAMID_TOKEN_SPACING: f32 = 8.0;
+    /// Camel display dimensions
+    pub const CAMEL_DISPLAY_WIDTH: f32 = 32.0;
+    pub const CAMEL_DISPLAY_HEIGHT: f32 = 24.0;
+}
+
+/// Shared layout helpers
+pub mod layout {
+    /// Calculate optimal players per row based on available width
+    pub fn players_per_row(player_count: usize, available_width: f32) -> usize {
+        let max_fit = (available_width / super::mobile::MIN_PLAYER_CARD_WIDTH).floor() as usize;
+        match player_count {
+            2 => 2,
+            3 => 3.min(max_fit),
+            4 => 2, // Always 2x2 grid for 4 players
+            5 | 6 => if max_fit >= 3 { 3 } else { 2 },
+            7 | 8 => if max_fit >= 4 { 4 } else if max_fit >= 3 { 3 } else { 2 },
+            _ => max_fit.max(2).min(4),
+        }
+    }
+
+    /// Calculate card width to fill available space evenly
+    pub fn distributed_width(available_width: f32, count: usize, spacing: f32) -> f32 {
+        let total_spacing = spacing * (count.saturating_sub(1)) as f32;
+        ((available_width - total_spacing) / count as f32).floor()
+    }
+}
+
+// ============================================================================
+// Overlapping Stack Widget
+// ============================================================================
+
+/// Draw a horizontal stack of overlapping items (cards, tokens, etc.)
+/// Returns the total rect used
+pub fn draw_overlapping_stack<T, F>(
+    ui: &mut egui::Ui,
+    items: &[T],
+    item_width: f32,
+    item_height: f32,
+    overlap: f32,
+    draw_item: F,
+) -> egui::Rect
+where
+    F: Fn(&egui::Painter, egui::Rect, &T),
+{
+    if items.is_empty() {
+        return egui::Rect::NOTHING;
+    }
+
+    let total_width = item_width + (items.len().saturating_sub(1) as f32 * overlap);
+    let (total_rect, _) = ui.allocate_exact_size(
+        egui::vec2(total_width, item_height),
+        egui::Sense::hover(),
+    );
+
+    for (i, item) in items.iter().enumerate() {
+        let x_offset = i as f32 * overlap;
+        let item_rect = egui::Rect::from_min_size(
+            total_rect.min + egui::vec2(x_offset, 0.0),
+            egui::vec2(item_width, item_height),
+        );
+        draw_item(ui.painter(), item_rect, item);
+    }
+
+    total_rect
+}
+
+/// Draw a horizontal row of evenly-spaced items (tokens with gaps)
+/// Returns the total rect used
+pub fn draw_spaced_row<F>(
+    ui: &mut egui::Ui,
+    count: usize,
+    item_size: f32,
+    spacing: f32,
+    draw_item: F,
+) -> egui::Rect
+where
+    F: Fn(&egui::Painter, egui::Pos2, usize),
+{
+    if count == 0 {
+        return egui::Rect::NOTHING;
+    }
+
+    let total_width = item_size + (count.saturating_sub(1) as f32 * spacing);
+    let (rect, _) = ui.allocate_exact_size(
+        egui::vec2(total_width, item_size),
+        egui::Sense::hover(),
+    );
+
+    for i in 0..count {
+        let center = egui::pos2(
+            rect.left() + item_size / 2.0 + (i as f32 * spacing),
+            rect.center().y,
+        );
+        draw_item(ui.painter(), center, i);
+    }
+
+    rect
 }
 
 // ============================================================================

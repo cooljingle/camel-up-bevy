@@ -7,19 +7,8 @@ use crate::systems::movement::{get_leading_camel, get_second_place_camel, get_la
 use crate::systems::turn::{PlayerLegBetsStore, PlayerPyramidTokens};
 use crate::systems::animation::{spawn_firework, random_firework_color};
 use crate::ui::characters::{draw_avatar, draw_avatar_with_expression, draw_avatar_crown};
-use crate::ui::hud::{camel_color_to_egui, draw_camel_silhouette, draw_crown_overlay, draw_dunce_cap_overlay, draw_mini_leg_bet_card};
-
-/// Player colors for visual distinction (same as in hud.rs)
-const PLAYER_COLORS: [egui::Color32; 8] = [
-    egui::Color32::from_rgb(220, 50, 50),   // Red
-    egui::Color32::from_rgb(50, 120, 220),  // Blue
-    egui::Color32::from_rgb(50, 180, 80),   // Green
-    egui::Color32::from_rgb(220, 180, 50),  // Yellow
-    egui::Color32::from_rgb(180, 80, 220),  // Purple
-    egui::Color32::from_rgb(220, 130, 50),  // Orange
-    egui::Color32::from_rgb(80, 200, 200),  // Cyan
-    egui::Color32::from_rgb(200, 100, 150), // Pink
-];
+use crate::ui::hud::{draw_camel_silhouette, draw_crown_overlay, draw_dunce_cap_overlay, draw_mini_leg_bet_card};
+use crate::ui::theme::{camel_color_to_egui, desert_button, DesertButtonStyle, PLAYER_COLORS};
 
 /// Easing function for smooth panel animations
 fn ease_out_cubic(t: f32) -> f32 {
@@ -229,8 +218,8 @@ pub fn game_end_ui(
                 celebration.duration = 10.0; // 10 seconds of fireworks
             }
 
-            // Spawn fireworks at intervals
-            if celebration.active && celebration.elapsed < celebration.duration {
+            // Spawn fireworks at intervals - continues indefinitely until new game
+            if celebration.active {
                 celebration.elapsed += dt;
 
                 if celebration.elapsed >= celebration.next_firework_time {
@@ -240,11 +229,11 @@ pub fn game_end_ui(
                     let color = random_firework_color();
                     spawn_firework(&mut commands, x_pos, color);
 
-                    // Schedule next firework (faster at the start, slower later)
+                    // Schedule next firework (faster at the start, then steady pace)
                     let interval = if celebration.elapsed < 3.0 {
                         rng.gen_range(0.15..0.3)
                     } else {
-                        rng.gen_range(0.3..0.5)
+                        rng.gen_range(0.4..0.7)
                     };
                     celebration.next_firework_time = celebration.elapsed + interval;
                 }
@@ -471,7 +460,7 @@ fn draw_final_leg_complete_phase(
 
                         ui.add_space(30.0);
 
-                        if ui.button(egui::RichText::new("Continue to Final Standings").size(18.0)).clicked() {
+                        if desert_button(ui, "Final Standings", &DesertButtonStyle::medium()).clicked() {
                             should_continue = true;
                         }
                     });
@@ -557,15 +546,15 @@ fn draw_standings_pre_bets_phase(
 
                         if has_any_bets {
                             let btn_text = if has_winner_bets {
-                                "Reveal Winner Bets"
+                                "To Winner Bets"
                             } else {
-                                "Reveal Loser Bets"
+                                "To Loser Bets"
                             };
-                            if ui.button(egui::RichText::new(btn_text).size(18.0)).clicked() {
+                            if desert_button(ui, btn_text, &DesertButtonStyle::medium()).clicked() {
                                 should_continue = true;
                             }
                         } else {
-                            if ui.button(egui::RichText::new("Show Final Results").size(18.0)).clicked() {
+                            if desert_button(ui, "Final Results", &DesertButtonStyle::medium()).clicked() {
                                 state.phase = GameEndPhase::FinalResults;
                             }
                         }
@@ -742,26 +731,31 @@ fn draw_winner_bets_reveal_phase(
                         // Progress indicator
                         ui.label(egui::RichText::new(format!("Bet {}/{}", (current_idx + 1).min(total_bets), total_bets)).size(12.0).color(egui::Color32::GRAY));
 
-                        // Show Next button after payout is applied for current card
-                        if current_idx < total_bets && state.current_payout_applied {
-                            ui.add_space(10.0);
-                            let btn_text = if current_idx + 1 < total_bets {
-                                "Next"
-                            } else if !state.loser_bets_to_reveal.is_empty() {
-                                "Continue to Loser Bets"
-                            } else {
-                                "Finish Game"
-                            };
-                            let button = egui::Button::new(egui::RichText::new(btn_text).size(16.0))
-                                .min_size(egui::vec2(150.0, 40.0));
-                            if ui.add(button).clicked() {
+                        // Next button - always rendered to prevent layout shift, but invisible when not ready
+                        ui.add_space(10.0);
+                        let btn_visible = current_idx < total_bets && state.current_payout_applied;
+                        let btn_text = if current_idx + 1 < total_bets {
+                            "Next"
+                        } else if !state.loser_bets_to_reveal.is_empty() {
+                            "Continue to Loser Bets"
+                        } else {
+                            "Finish Game"
+                        };
+
+                        // Use scope to modify opacity without affecting other UI
+                        ui.scope(|ui| {
+                            if !btn_visible {
+                                // Make button invisible but still occupy space
+                                ui.set_invisible();
+                            }
+                            if desert_button(ui, btn_text, &DesertButtonStyle::default()).clicked() && btn_visible {
                                 if current_idx + 1 < total_bets {
                                     should_next_card = true;
                                 } else {
                                     should_advance = true;
                                 }
                             }
-                        }
+                        });
                     });
                 });
         });
@@ -940,24 +934,29 @@ fn draw_loser_bets_reveal_phase(
                         // Progress indicator
                         ui.label(egui::RichText::new(format!("Bet {}/{}", (current_idx + 1).min(total_bets), total_bets)).size(12.0).color(egui::Color32::GRAY));
 
-                        // Show Next button after payout is applied for current card
-                        if current_idx < total_bets && state.current_payout_applied {
-                            ui.add_space(10.0);
-                            let btn_text = if current_idx + 1 < total_bets {
-                                "Next"
-                            } else {
-                                "Show Final Results"
-                            };
-                            let button = egui::Button::new(egui::RichText::new(btn_text).size(16.0))
-                                .min_size(egui::vec2(150.0, 40.0));
-                            if ui.add(button).clicked() {
+                        // Next button - always rendered to prevent layout shift, but invisible when not ready
+                        ui.add_space(10.0);
+                        let btn_visible = current_idx < total_bets && state.current_payout_applied;
+                        let btn_text = if current_idx + 1 < total_bets {
+                            "Next"
+                        } else {
+                            "Show Final Results"
+                        };
+
+                        // Use scope to modify opacity without affecting other UI
+                        ui.scope(|ui| {
+                            if !btn_visible {
+                                // Make button invisible but still occupy space
+                                ui.set_invisible();
+                            }
+                            if desert_button(ui, btn_text, &DesertButtonStyle::default()).clicked() && btn_visible {
                                 if current_idx + 1 < total_bets {
                                     should_next_card = true;
                                 } else {
                                     should_advance = true;
                                 }
                             }
-                        }
+                        });
                     });
                 });
         });
@@ -1101,19 +1100,7 @@ fn draw_final_results_mobile_panels(
 
                 // Action buttons
                 ui.horizontal(|ui| {
-                    // Play Again button - gold style
-                    let play_btn = egui::Button::new(
-                        egui::RichText::new("Play Again")
-                            .size(15.0)
-                            .strong()
-                            .color(egui::Color32::BLACK)
-                    )
-                    .fill(egui::Color32::from_rgb(255, 200, 50))
-                    .stroke(egui::Stroke::new(2.0, egui::Color32::from_rgb(200, 150, 0)))
-                    .corner_radius(8.0)
-                    .min_size(egui::vec2(120.0, 42.0));
-
-                    if ui.add(play_btn).clicked() {
+                    if desert_button(ui, "Play Again", &DesertButtonStyle::default()).clicked() {
                         next_state.set(GameState::MainMenu);
                     }
 
@@ -1121,18 +1108,7 @@ fn draw_final_results_mobile_panels(
 
                     #[cfg(not(target_arch = "wasm32"))]
                     {
-                        // Quit button - subtle gray style
-                        let quit_btn = egui::Button::new(
-                            egui::RichText::new("Quit")
-                                .size(14.0)
-                                .color(egui::Color32::WHITE)
-                        )
-                        .fill(egui::Color32::from_rgb(60, 60, 70))
-                        .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgb(100, 100, 110)))
-                        .corner_radius(8.0)
-                        .min_size(egui::vec2(80.0, 42.0));
-
-                        if ui.add(quit_btn).clicked() {
+                        if desert_button(ui, "Quit", &DesertButtonStyle::default()).clicked() {
                             std::process::exit(0);
                         }
                     }
@@ -1266,19 +1242,13 @@ fn draw_final_results_phase(
 
                         // Styled buttons
                         ui.horizontal(|ui| {
-                            // Play Again button - gold style
-                            let play_btn = egui::Button::new(
-                                egui::RichText::new("Play Again")
-                                    .size(if is_mobile { 16.0 } else { 18.0 })
-                                    .strong()
-                                    .color(egui::Color32::BLACK)
-                            )
-                            .fill(egui::Color32::from_rgb(255, 200, 50))
-                            .stroke(egui::Stroke::new(2.0, egui::Color32::from_rgb(200, 150, 0)))
-                            .corner_radius(8.0)
-                            .min_size(if is_mobile { egui::vec2(130.0, 45.0) } else { egui::vec2(140.0, 42.0) });
+                            let style = if is_mobile {
+                                DesertButtonStyle::default()
+                            } else {
+                                DesertButtonStyle::medium()
+                            };
 
-                            if ui.add(play_btn).clicked() {
+                            if desert_button(ui, "Play Again", &style).clicked() {
                                 next_state.set(GameState::MainMenu);
                             }
 
@@ -1286,18 +1256,7 @@ fn draw_final_results_phase(
 
                             #[cfg(not(target_arch = "wasm32"))]
                             {
-                                // Quit button - subtle gray style
-                                let quit_btn = egui::Button::new(
-                                    egui::RichText::new("Quit")
-                                        .size(if is_mobile { 14.0 } else { 16.0 })
-                                        .color(egui::Color32::WHITE)
-                                )
-                                .fill(egui::Color32::from_rgb(60, 60, 70))
-                                .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgb(100, 100, 110)))
-                                .corner_radius(8.0)
-                                .min_size(if is_mobile { egui::vec2(90.0, 45.0) } else { egui::vec2(100.0, 42.0) });
-
-                                if ui.add(quit_btn).clicked() {
+                                if desert_button(ui, "Quit", &DesertButtonStyle::default()).clicked() {
                                     std::process::exit(0);
                                 }
                             }

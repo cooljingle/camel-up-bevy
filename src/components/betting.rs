@@ -19,6 +19,7 @@ impl LegBettingTiles {
             .map(|color| {
                 vec![
                     LegBetTile { camel: color, value: 2 }, // Bottom
+                    LegBetTile { camel: color, value: 2 },
                     LegBetTile { camel: color, value: 3 },
                     LegBetTile { camel: color, value: 5 }, // Top
                 ]

@@ -895,11 +895,22 @@ fn draw_big_smile(painter: &egui::Painter, center: Pos2, radius: f32) {
 /// Draw a small crown on top of an avatar (for winner)
 pub fn draw_avatar_crown(painter: &egui::Painter, rect: Rect) {
     let center = rect.center();
-    let size = rect.width().min(rect.height());
+    let avatar_size = rect.width().min(rect.height());
 
-    // Crown positioned at top of avatar
-    let crown_center = Pos2::new(center.x, rect.min.y - size * 0.12);
-    let scale = size * 0.015; // Scale crown based on avatar size
+    // Crown sizing relative to avatar
+    const CROWN_SCALE: f32 = 0.08; // Crown is 4% of avatar size per unit
+    const HEAD_OVERLAP: f32 = 0.08; // Crown overlaps 8% into avatar from top
+
+    // Crown proportions (in scale units)
+    const BASE_WIDTH: f32 = 8.0;
+    const BASE_HEIGHT: f32 = 2.0;
+    const POINT_HEIGHT: f32 = 4.0;
+    const POINT_WIDTH: f32 = 2.5;
+    const POINT_SPACING: f32 = 2.5;
+    const NUM_POINTS: i32 = 3;
+
+    let scale = avatar_size * CROWN_SCALE;
+    let crown_center = Pos2::new(center.x, rect.min.y + avatar_size * HEAD_OVERLAP);
 
     // Crown colors
     let gold = Color32::from_rgb(255, 215, 0);
@@ -907,40 +918,35 @@ pub fn draw_avatar_crown(painter: &egui::Painter, rect: Rect) {
     let jewel_red = Color32::from_rgb(220, 50, 50);
     let jewel_blue = Color32::from_rgb(50, 100, 220);
 
-    // Crown dimensions (scaled)
-    let crown_width = 8.0 * scale;
-    let crown_height = 4.0 * scale;
-    let point_height = 4.0 * scale;
-    let point_width = 2.5 * scale;
-
     // Crown base (rectangle)
+    let base_offset_y = 1.5 * scale;
     let base_rect = Rect::from_center_size(
-        crown_center + egui::vec2(0.0, 1.5 * scale),
-        egui::vec2(crown_width, crown_height * 0.5)
+        crown_center + egui::vec2(0.0, base_offset_y),
+        egui::vec2(BASE_WIDTH * scale, BASE_HEIGHT * scale)
     );
-    painter.rect_filled(base_rect, 1.0 * scale, gold);
+    painter.rect_filled(base_rect, scale, gold);
 
-    // Crown points (3 triangles)
-    let point_y = crown_center.y - 1.0 * scale;
+    // Crown points (triangles)
+    let point_base_y = crown_center.y - scale;
 
-    for i in 0..3 {
-        let x_offset = (i as f32 - 1.0) * 2.5 * scale;
-        let point_center = Pos2::new(crown_center.x + x_offset, point_y);
+    for i in 0..NUM_POINTS {
+        let x_offset = (i as f32 - 1.0) * POINT_SPACING * scale;
+        let point_center = Pos2::new(crown_center.x + x_offset, point_base_y);
 
-        // Triangle for crown point
         let points = vec![
-            Pos2::new(point_center.x, point_center.y - point_height),  // Top
-            Pos2::new(point_center.x - point_width / 2.0, point_center.y),  // Bottom left
-            Pos2::new(point_center.x + point_width / 2.0, point_center.y),  // Bottom right
+            Pos2::new(point_center.x, point_center.y - POINT_HEIGHT * scale), // Top
+            Pos2::new(point_center.x - POINT_WIDTH * scale / 2.0, point_center.y), // Bottom left
+            Pos2::new(point_center.x + POINT_WIDTH * scale / 2.0, point_center.y), // Bottom right
         ];
         painter.add(egui::Shape::convex_polygon(points, gold, egui::Stroke::new(0.5 * scale, gold_dark)));
     }
 
-    // Small gems on crown points
+    // Gems on crown points
     let gem_colors = [jewel_red, jewel_blue, jewel_red];
-    for i in 0..3 {
-        let x_offset = (i as f32 - 1.0) * 2.5 * scale;
-        let gem_pos = Pos2::new(crown_center.x + x_offset, point_y - 2.0 * scale);
-        painter.circle_filled(gem_pos, 1.0 * scale, gem_colors[i]);
+    let gem_offset_y = 2.0 * scale;
+    for i in 0..NUM_POINTS {
+        let x_offset = (i as f32 - 1.0) * POINT_SPACING * scale;
+        let gem_pos = Pos2::new(crown_center.x + x_offset, point_base_y - gem_offset_y);
+        painter.circle_filled(gem_pos, scale, gem_colors[i as usize]);
     }
 }

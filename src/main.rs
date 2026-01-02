@@ -12,6 +12,7 @@ mod game;
 mod systems;
 mod ui;
 
+use components::{BoardPosition, Camel};
 use game::ai::{ai_decision_system, AiConfig, AiThinkTimer};
 use game::state::GameState;
 use systems::animation::{
@@ -27,11 +28,12 @@ use systems::movement::{
 };
 use systems::setup::{cleanup_game, initial_roll_animation_system, setup_game};
 use systems::turn::{
-    advance_turn_system, check_game_end_system, check_leg_end_system, handle_spectator_tile_action,
+    advance_turn_system, check_game_end_system, check_leg_end_system, game_end_delay_system,
     handle_leg_bet_action, handle_pyramid_click, handle_pyramid_hover, handle_pyramid_roll_action,
-    handle_race_bet_action, handle_spectator_tile_clicks, update_spectator_tile_sprites,
-    CrazyCamelRollResult, PlaceSpectatorTileAction, PlaceRaceBetAction, PlayerLegBetsStore,
-    PlayerPyramidTokens, PyramidRollResult, RollPyramidAction, TakeLegBetAction, TurnState,
+    handle_race_bet_action, handle_spectator_tile_action, handle_spectator_tile_clicks,
+    update_spectator_tile_sprites, CrazyCamelRollResult, PlaceRaceBetAction,
+    PlaceSpectatorTileAction, PlayerLegBetsStore, PlayerPyramidTokens, PyramidRollResult,
+    RollPyramidAction, TakeLegBetAction, TurnState,
 };
 use ui::hud::{
     game_hud_ui, leg_scoring_modal_ui, update_camel_position_animations, update_dice_popup_timer,
@@ -42,7 +44,6 @@ use ui::player_setup::PlayerSetupConfig;
 use ui::rules::RulesState;
 use ui::scoring::{game_end_ui, setup_game_end_state, CelebrationState};
 use ui::theme::{configure_fonts, FontsConfigured};
-use components::{BoardPosition, Camel};
 
 fn main() {
     let mut app = App::new();
@@ -104,7 +105,10 @@ fn main() {
 
     // UI and camera scaling systems - runs every frame to handle window resizing
     // Font configuration also runs in Update but only configures once
-    app.add_systems(Update, (scale_ui_to_fit, scale_camera_to_fit, configure_fonts));
+    app.add_systems(
+        Update,
+        (scale_ui_to_fit, scale_camera_to_fit, configure_fonts),
+    );
 
     // Game setup when entering Playing state
     app.add_systems(OnEnter(GameState::Playing), setup_game_with_resources)
@@ -181,6 +185,10 @@ fn main() {
             Update,
             check_game_end_system.run_if(in_state(GameState::Playing)),
         )
+        .add_systems(
+            Update,
+            game_end_delay_system.run_if(in_state(GameState::Playing)),
+        )
         // Initial roll animation system
         .add_systems(
             Update,
@@ -216,7 +224,7 @@ const MOBILE_DESIGN_WIDTH: f32 = 400.0;
 const MOBILE_DESIGN_HEIGHT: f32 = 600.0;
 
 // Layout thresholds
-const MIN_SIDE_PANEL_WIDTH: f32 = 600.0;  // Minimum width to use side panels
+const MIN_SIDE_PANEL_WIDTH: f32 = 600.0; // Minimum width to use side panels
 const SIDE_PANEL_ASPECT_RATIO: f32 = 1.2; // Minimum aspect ratio for side panels
 
 /// Resource to track camera state for zoom transitions
@@ -249,7 +257,8 @@ fn scale_ui_to_fit(
 
     // Determine layout based on aspect ratio and minimum width
     let aspect_ratio = window_width / window_height;
-    let use_side_panels = aspect_ratio > SIDE_PANEL_ASPECT_RATIO && window_width >= MIN_SIDE_PANEL_WIDTH;
+    let use_side_panels =
+        aspect_ratio > SIDE_PANEL_ASPECT_RATIO && window_width >= MIN_SIDE_PANEL_WIDTH;
     ui_state.use_side_panels = use_side_panels;
 
     // Calculate UI scale with height constraint
@@ -275,9 +284,9 @@ fn scale_ui_to_fit(
 const GAME_WORLD_HEIGHT: f32 = 400.0; // Board height + stack space + margins
 
 // Board layout constants
-const BOARD_START_X: f32 = -280.0;  // X position of space 0
-const BOARD_SPACING: f32 = 80.0;    // Distance between spaces
-const BOARD_MARGIN: f32 = 85.0;     // Margin on each side (reduced for mobile breathing room)
+const BOARD_START_X: f32 = -280.0; // X position of space 0
+const BOARD_SPACING: f32 = 80.0; // Distance between spaces
+const BOARD_MARGIN: f32 = 102.0; // Margin on each side (reduced for mobile breathing room)
 
 /// Calculate the X range of the board that should be visible based on game state
 /// Returns (min_x, max_x) in world coordinates
@@ -287,8 +296,8 @@ fn calculate_visible_board_range(
     current_game_state: &GameState,
 ) -> (f32, f32) {
     // Default: show spaces 1-16 (main track, not space 0)
-    let default_min = BOARD_START_X + BOARD_SPACING;  // -200 (space 1)
-    let default_max = BOARD_START_X + 7.0 * BOARD_SPACING;  // +280 (space 7/8)
+    let default_min = BOARD_START_X + BOARD_SPACING; // -200 (space 1)
+    let default_max = BOARD_START_X + 7.0 * BOARD_SPACING; // +280 (space 7/8)
 
     // Check if any camel is at space 0 (initial setup)
     let has_camel_at_start = camels.iter().any(|p| p.space_index == 0);
@@ -303,11 +312,11 @@ fn calculate_visible_board_range(
 
     // Determine min_x based on state
     let min_x = if has_camel_past_finish {
-        -400.0  // Include winner position at -360 with margin
+        -400.0 // Include winner position at -360 with margin
     } else if has_camel_at_start || in_initial_setup {
-        -500.0  // Include staging position at -450 with margin
+        -500.0 // Include staging position at -450 with margin
     } else {
-        default_min  // -200, skip space 0
+        default_min // -200, skip space 0
     };
 
     (min_x, default_max)
@@ -317,8 +326,12 @@ fn calculate_visible_board_range(
 /// Uses the measured game_board_rect from egui CentralPanel for accurate sizing
 /// Dynamically adjusts visible range based on game state
 /// Triggers smooth zoom animation when initial rolls complete
+
 fn scale_camera_to_fit(
-    mut camera_query: Query<(Entity, &mut Projection, Option<&CameraZoomAnimation>), With<Camera2d>>,
+    mut camera_query: Query<
+        (Entity, &mut Projection, Option<&CameraZoomAnimation>),
+        With<Camera2d>,
+    >,
     ui_state: Res<ui::hud::UiState>,
     camels: Query<&BoardPosition, With<Camel>>,
     mut camera_state: ResMut<CameraState>,
@@ -329,7 +342,6 @@ fn scale_camera_to_fit(
         return;
     };
 
-    // Use the measured game board rect from egui
     let Some(rect) = ui_state.game_board_rect else {
         return;
     };
@@ -341,42 +353,61 @@ fn scale_camera_to_fit(
         return;
     }
 
-    // Calculate dynamic world bounds based on game state
-    let (world_min_x, world_max_x) = calculate_visible_board_range(ui_state.as_ref(), &camels, current_game_state.get());
-    let world_width = (world_max_x - world_min_x) + 2.0 * BOARD_MARGIN;
+    // 1. Calculate the authoritative target based on state
+    let (world_min_x, world_max_x) = if ui_state.initial_rolls_complete {
+        (
+            BOARD_START_X + BOARD_SPACING,
+            BOARD_START_X + 7.0 * BOARD_SPACING,
+        )
+    } else {
+        calculate_visible_board_range(ui_state.as_ref(), &camels, current_game_state.get())
+    };
 
+    let world_width = (world_max_x - world_min_x) + 2.0 * BOARD_MARGIN;
     let scale_x = world_width / effective_width;
     let scale_y = GAME_WORLD_HEIGHT / effective_height;
     let target_scale = scale_x.max(scale_y).max(1.0);
 
-    // Detect transition: initial rolls just completed
+    // 2. Handle Transition
     if ui_state.initial_rolls_complete && !camera_state.last_initial_rolls_complete {
-        // Get current scale and start zoom animation
         if let Projection::Orthographic(ref ortho) = *projection {
             let current_scale = ortho.scale;
-            // Only animate if there's actually a scale change
+
             if (current_scale - target_scale).abs() > 0.01 {
+                bevy::log::info!(
+                    "Starting zoom animation: {:.3} -> {:.3}",
+                    current_scale,
+                    target_scale
+                );
                 commands.entity(entity).insert(CameraZoomAnimation::new(
                     current_scale,
                     target_scale,
-                    0.2, // 200ms
+                    0.2,
                 ));
             }
         }
         camera_state.last_initial_rolls_complete = true;
+
+        // --- CRITICAL FIX ---
+        // Return immediately! Do not fall through to the steady-state logic below.
+        // The 'CameraZoomAnimation' component won't exist on the entity until
+        // the next frame (Commands are deferred), so 'animation.is_some()'
+        // below would be false, causing an instant snap if we didn't return here.
+        return;
     }
 
-    // Reset tracking when returning to initial setup (new game)
+    // Reset tracking when returning to initial setup
     if !ui_state.initial_rolls_complete && camera_state.last_initial_rolls_complete {
         camera_state.last_initial_rolls_complete = false;
     }
 
-    // If animation is active, don't override the scale (animation system handles it)
+    // 3. Steady State Application
+    // If animation is running, do nothing (animation system handles it)
     if animation.is_some() {
         return;
     }
 
-    // Otherwise apply scale immediately (normal behavior)
+    // Otherwise, apply target immediately
     if let Projection::Orthographic(ref mut ortho) = *projection {
         ortho.scale = target_scale;
     }
@@ -527,8 +558,10 @@ fn setup_game_with_resources(
     commands: Commands,
     config: Res<PlayerSetupConfig>,
     existing_camels: Query<Entity, With<components::Camel>>,
+    meshes: ResMut<Assets<Mesh>>,
+    materials: ResMut<Assets<ColorMaterial>>,
 ) {
-    setup_game(commands, config, existing_camels);
+    setup_game(commands, config, existing_camels, meshes, materials);
 }
 
 /// Initialize turn-related resources

@@ -516,8 +516,19 @@ pub fn advance_turn_system(
 pub fn check_leg_end_system(
     pyramid: Res<Pyramid>,
     turn_state: Res<TurnState>,
+    time: Res<Time>,
     mut ui_state: ResMut<crate::ui::hud::UiState>,
 ) {
+    // Count down the leg scoring delay timer
+    if ui_state.leg_scoring_delay > 0.0 {
+        ui_state.leg_scoring_delay -= time.delta_secs();
+        if ui_state.leg_scoring_delay <= 0.0 {
+            ui_state.leg_scoring_delay = 0.0;
+            ui_state.show_leg_scoring = true;
+        }
+        return;
+    }
+
     // Only check for leg end if the leg has actually started (at least one action taken)
     // and we're not in the middle of processing an action (including waiting for delay timer)
     // Also check that we're not already showing the modal to avoid spamming the log
@@ -528,7 +539,8 @@ pub fn check_leg_end_system(
         && !ui_state.show_leg_scoring
     {
         info!("Leg {} complete! Showing scoring...", turn_state.leg_number);
-        ui_state.show_leg_scoring = true;
+        // Start the 800ms delay before showing the modal
+        ui_state.leg_scoring_delay = 0.8;
     }
 }
 
@@ -536,12 +548,12 @@ pub fn check_leg_end_system(
 pub fn check_game_end_system(
     mut commands: Commands,
     mut events: MessageReader<MovementCompleteEvent>,
-    mut next_state: ResMut<NextState<GameState>>,
+    mut ui_state: ResMut<crate::ui::hud::UiState>,
     camels: Query<(Entity, &Camel, &BoardPosition, &Transform)>,
     board: Res<GameBoard>,
 ) {
     for event in events.read() {
-        if event.crossed_finish {
+        if event.crossed_finish && ui_state.game_end_delay <= 0.0 {
             info!("A camel crossed the finish line! Game over!");
 
             // Find the winning camel (highest space index, then highest stack position)
@@ -585,6 +597,22 @@ pub fn check_game_end_system(
                 info!("Crown spawned for winning camel!");
             }
 
+            // Start the 800ms delay before transitioning to GameEnd state
+            ui_state.game_end_delay = 0.8;
+        }
+    }
+}
+
+/// System to handle delayed transition to GameEnd state
+pub fn game_end_delay_system(
+    time: Res<Time>,
+    mut ui_state: ResMut<crate::ui::hud::UiState>,
+    mut next_state: ResMut<NextState<GameState>>,
+) {
+    if ui_state.game_end_delay > 0.0 {
+        ui_state.game_end_delay -= time.delta_secs();
+        if ui_state.game_end_delay <= 0.0 {
+            ui_state.game_end_delay = 0.0;
             next_state.set(GameState::GameEnd);
         }
     }
@@ -791,6 +819,11 @@ pub fn handle_pyramid_click(
         return;
     }
 
+    // Don't process if showing winner/loser betting modal
+    if ui_state.show_winner_betting || ui_state.show_loser_betting {
+        return;
+    }
+
     // Don't process if already shaking
     if !shake_query.is_empty() {
         return;
@@ -879,6 +912,8 @@ pub fn handle_pyramid_hover(
     // Check if pyramid is interactive (can be clicked)
     let is_interactive = ui_state.initial_rolls_complete
         && !ui_state.show_leg_scoring
+        && !ui_state.show_winner_betting
+        && !ui_state.show_loser_betting
         && shake_query.is_empty()
         && players.as_ref().map_or(false, |p| !p.current_player().is_ai)
         && !turn_state.action_taken

@@ -578,11 +578,11 @@ pub fn spawn_firework(commands: &mut Commands, x_pos: f32, color: Color) {
 
     // Upward velocity with slight random angle
     let angle_offset = rng.gen_range(-0.2..0.2);
-    let speed = rng.gen_range(400.0..550.0);
+    let speed = rng.gen_range(800.0..1000.0);
     let velocity = Vec2::new(angle_offset * 100.0, speed);
 
     // Fuse time determines how high it goes before exploding
-    let fuse_time = rng.gen_range(0.6..0.9);
+    let fuse_time = rng.gen_range(0.2..0.8);
 
     commands.spawn((
         FireworkMarker,

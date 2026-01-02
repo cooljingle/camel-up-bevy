@@ -3,6 +3,7 @@ use crate::systems::turn::{PlayerLegBetsStore, PlayerPyramidTokens, TurnState};
 use crate::ui::player_setup::PlayerSetupConfig;
 use bevy::color::Srgba;
 use bevy::prelude::*;
+use rand::seq::SliceRandom;
 use rand::Rng;
 
 // ============================================================================
@@ -669,7 +670,11 @@ const PYRAMID_BASE_Z: f32 = 15.0;
 pub struct PyramidSprite;
 
 /// Spawn the pyramid roll button as a game board sprite
-fn spawn_pyramid_button(commands: &mut Commands) {
+fn spawn_pyramid_button(
+    commands: &mut Commands,
+    meshes: &mut ResMut<Assets<Mesh>>,
+    materials: &mut ResMut<Assets<ColorMaterial>>,
+) {
     // Pyramid gold colors (matching the egui version)
     let pyramid_light = Color::srgb(0.83, 0.66, 0.29); // #D4A84B
     let pyramid_dark = Color::srgb(0.63, 0.48, 0.19); // #A07A30
@@ -677,6 +682,16 @@ fn spawn_pyramid_button(commands: &mut Commands) {
     let shadow_color = Color::srgba(0.0, 0.0, 0.0, 0.3);
 
     let position = Vec3::new(0.0, PYRAMID_Y_POSITION, PYRAMID_BASE_Z);
+
+    // Create coin mesh and material handles for the gold coin
+    let coin_radius = 12.0;
+    let coin_gold = Color::srgb(0.83, 0.66, 0.29); // #D4A84B
+    let coin_dark = Color::srgb(0.63, 0.48, 0.19); // #A07A30
+
+    let coin_outer_mesh = meshes.add(Circle::new(coin_radius + 2.0));
+    let coin_inner_mesh = meshes.add(Circle::new(coin_radius));
+    let coin_outer_material = materials.add(ColorMaterial::from_color(coin_dark));
+    let coin_inner_material = materials.add(ColorMaterial::from_color(coin_gold));
 
     // Parent pyramid entity with clickable marker
     commands
@@ -694,6 +709,10 @@ fn spawn_pyramid_button(commands: &mut Commands) {
                 pyramid_dark,
                 outline_color,
                 shadow_color,
+                coin_outer_mesh.clone(),
+                coin_inner_mesh.clone(),
+                coin_outer_material.clone(),
+                coin_inner_material.clone(),
             );
         });
 }
@@ -706,6 +725,10 @@ fn spawn_pyramid_layers(
     dark_color: Color,
     outline_color: Color,
     shadow_color: Color,
+    coin_outer_mesh: Handle<Mesh>,
+    coin_inner_mesh: Handle<Mesh>,
+    coin_outer_material: Handle<ColorMaterial>,
+    coin_inner_material: Handle<ColorMaterial>,
 ) {
     // The pyramid is built from triangular-ish shapes using rectangles
     // We'll approximate with a stepped pyramid similar to the tents
@@ -806,41 +829,47 @@ fn spawn_pyramid_layers(
     ));
 
     // Add gold coin below "Roll" text
-    spawn_gold_coin(parent, Vec3::new(0.0, -26.0, 1.0), 12.0);
+    spawn_gold_coin(
+        parent,
+        Vec3::new(0.0, -26.0, 1.0),
+        coin_outer_mesh,
+        coin_inner_mesh,
+        coin_outer_material,
+        coin_inner_material,
+    );
 }
 
-/// Spawn a gold coin sprite with "1" inside
-fn spawn_gold_coin(parent: &mut ChildSpawnerCommands, position: Vec3, radius: f32) {
-    let coin_gold = Color::srgb(0.83, 0.66, 0.29); // #D4A84B
-    let coin_dark = Color::srgb(0.63, 0.48, 0.19); // #A07A30
+/// Spawn a gold coin with circular mesh and "1" inside
+fn spawn_gold_coin(
+    parent: &mut ChildSpawnerCommands,
+    position: Vec3,
+    coin_outer_mesh: Handle<Mesh>,
+    coin_inner_mesh: Handle<Mesh>,
+    coin_outer_material: Handle<ColorMaterial>,
+    coin_inner_material: Handle<ColorMaterial>,
+) {
     let text_color = Color::srgb(0.42, 0.29, 0.10); // #6B4A1A
 
-    // Coin outer border (darker)
+    // Coin outer border (darker circle)
     parent.spawn((
         PyramidSprite,
-        Sprite {
-            color: coin_dark,
-            custom_size: Some(Vec2::splat(radius * 2.0 + 4.0)),
-            ..default()
-        },
+        Mesh2d(coin_outer_mesh),
+        MeshMaterial2d(coin_outer_material),
         Transform::from_translation(position + Vec3::new(0.0, 0.0, 0.0)),
     ));
 
-    // Coin main (gold)
+    // Coin main (gold circle)
     parent.spawn((
         PyramidSprite,
-        Sprite {
-            color: coin_gold,
-            custom_size: Some(Vec2::splat(radius * 2.0)),
-            ..default()
-        },
+        Mesh2d(coin_inner_mesh),
+        MeshMaterial2d(coin_inner_material),
         Transform::from_translation(position + Vec3::new(0.0, 0.0, 0.1)),
     ));
 
     // "1" text in center
     parent.spawn((
         PyramidSprite,
-        Text2d::new("+$1"),
+        Text2d::new("1"),
         TextFont {
             font_size: 16.0,
             ..default()
@@ -873,11 +902,13 @@ impl InitialRollCamel {
 /// Resource to manage the initial setup roll animations
 #[derive(Resource, Default)]
 pub struct InitialSetupRolls {
-    pub camel_rolls: Vec<(InitialRollCamel, u8, Vec3)>, // (camel type, roll value, target position)
+    pub camel_rolls: Vec<(InitialRollCamel, u8, u8, u8, Vec3)>, // (camel type, roll value, space_index, stack_pos, target position)
     pub current_roll_index: usize,                      // Which roll is currently animating
     pub all_complete: bool,                             // All rolls have been shown
     pub current_dice_spawned: bool,                     // Whether dice for current roll was spawned
     pub current_camel_moving: bool, // Whether camel for current roll has started moving
+    pub started: bool,              // Whether the player has clicked the "Set up camels" button
+    pub placed_camels: Vec<(u8, u8)>, // (space_index, stack_pos) for camels that finished moving
 }
 
 /// Marker component for camels waiting to move onto the board during initial setup
@@ -888,10 +919,82 @@ pub struct PendingInitialMove;
 const CAMEL_STAGING_X: f32 = -450.0;
 const CAMEL_STAGING_Y: f32 = -100.0;
 
+/// Duration per hop for initial camel movement
+const CAMEL_HOP_DURATION: f32 = 0.15;
+
+/// Generate waypoints for initial racing camel movement (forward from space 0)
+fn generate_initial_waypoints_racing(
+    board: &GameBoard,
+    staging_pos: Vec3,
+    target_space: u8,
+    target_stack_pos: u8,
+    placed_camels: &[(u8, u8)],  // (space_index, stack_pos) for already-placed camels
+) -> Vec<Vec3> {
+    let mut waypoints = vec![staging_pos];
+
+    // Hop through spaces 0 to target_space
+    for space in 0..=target_space {
+        let base_pos = board.get_position(space);
+
+        // Calculate stack height at this space
+        let stack_height = if space == target_space {
+            target_stack_pos  // Final position uses calculated stack pos
+        } else {
+            // Intermediate spaces: hop to top of existing camels
+            placed_camels.iter().filter(|(s, _)| *s == space).count() as u8
+        };
+
+        let y = base_pos.y + stack_height as f32 * 25.0;
+        waypoints.push(Vec3::new(base_pos.x, y, 10.0 + stack_height as f32));
+    }
+
+    waypoints
+}
+
+/// Generate waypoints for initial crazy camel movement (backward from finish line)
+fn generate_initial_waypoints_crazy(
+    board: &GameBoard,
+    staging_pos: Vec3,
+    target_space: u8,
+    target_stack_pos: u8,
+    placed_camels: &[(u8, u8)],  // (space_index, stack_pos) for already-placed camels
+) -> Vec<Vec3> {
+    let mut waypoints = vec![staging_pos];
+
+    // Crazy camels start near finish (space 15) and hop backwards to their target
+    // They hop from space 15 down to target_space
+    let start_space = 15u8;  // Finish line area
+    let mut current = start_space;
+
+    loop {
+        let base_pos = board.get_position(current);
+
+        // Calculate stack height at this space
+        let stack_height = if current == target_space {
+            target_stack_pos  // Final position uses calculated stack pos
+        } else {
+            // Intermediate spaces: hop to top of existing camels
+            placed_camels.iter().filter(|(s, _)| *s == current).count() as u8
+        };
+
+        let y = base_pos.y + stack_height as f32 * 25.0;
+        waypoints.push(Vec3::new(base_pos.x, y, 10.0 + stack_height as f32));
+
+        if current == target_space {
+            break;
+        }
+        current -= 1;
+    }
+
+    waypoints
+}
+
 pub fn setup_game(
     mut commands: Commands,
     config: Res<PlayerSetupConfig>,
     existing_camels: Query<Entity, With<Camel>>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
     // Don't setup if game entities already exist (returning from leg scoring)
     if !existing_camels.is_empty() {
@@ -930,7 +1033,10 @@ pub fn setup_game(
     let mut camel_positions: Vec<(u8, u8)> = Vec::new(); // (space_index, stack_pos)
     let mut initial_rolls = InitialSetupRolls::default();
 
-    for (i, color) in CamelColor::all().into_iter().enumerate() {
+    let mut racing_order: Vec<CamelColor> = CamelColor::all().into();
+    racing_order.shuffle(&mut rng);
+
+    for (i, color) in racing_order.into_iter().enumerate() {
         // Roll 1-3 for starting position (space index 0-2)
         let roll_value = rng.gen_range(1..=3) as u8;
         let space_index = roll_value - 1; // Convert 1-3 roll to 0-2 index
@@ -955,7 +1061,7 @@ pub fn setup_game(
         // Record the roll and target position for animation
         initial_rolls
             .camel_rolls
-            .push((InitialRollCamel::Racing(color), roll_value, target_pos));
+            .push((InitialRollCamel::Racing(color), roll_value, space_index, stack_pos, target_pos));
 
         // Spawn camels at staging position (staggered vertically so they're visible)
         let staging_pos = Vec3::new(
@@ -978,7 +1084,10 @@ pub fn setup_game(
     let racing_camel_count = CamelColor::all().len();
     let mut crazy_positions: Vec<(u8, u8)> = Vec::new(); // (space_index, stack_pos)
 
-    for (i, crazy_color) in CrazyCamelColor::all().into_iter().enumerate() {
+    let mut crazy_order: Vec<CrazyCamelColor> = CrazyCamelColor::all().into();
+    crazy_order.shuffle(&mut rng);
+
+    for (i, crazy_color) in crazy_order.into_iter().enumerate() {
         // Roll 1-3 for starting position (mapped to space indices 13-15)
         // Roll 1 → space 16 (index 15), Roll 2 → space 15 (index 14), Roll 3 → space 14 (index 13)
         let roll_value = rng.gen_range(1..=3) as u8;
@@ -1005,6 +1114,8 @@ pub fn setup_game(
         initial_rolls.camel_rolls.push((
             InitialRollCamel::Crazy(crazy_color),
             roll_value,
+            space_index,
+            stack_pos,
             target_pos,
         ));
 
@@ -1039,7 +1150,7 @@ pub fn setup_game(
     }
 
     // Spawn pyramid roll button below the track
-    spawn_pyramid_button(&mut commands);
+    spawn_pyramid_button(&mut commands, &mut meshes, &mut materials);
 
     info!("Game setup complete!");
 }
@@ -1053,6 +1164,7 @@ pub fn cleanup_game(
     mut camera_state: ResMut<crate::CameraState>,
     mut camel_position_anims: ResMut<crate::ui::hud::CamelPositionAnimations>,
     mut rules_state: ResMut<crate::ui::rules::RulesState>,
+    mut ai_think_timer: ResMut<crate::game::ai::AiThinkTimer>,
 ) {
     for entity in game_entities.iter() {
         commands.entity(entity).despawn();
@@ -1064,21 +1176,31 @@ pub fn cleanup_game(
     *camera_state = crate::CameraState::default();
     *camel_position_anims = crate::ui::hud::CamelPositionAnimations::default();
     *rules_state = crate::ui::rules::RulesState::default();
+    *ai_think_timer = crate::game::ai::AiThinkTimer::default();
 
-    // Remove GameEndState resource (only exists after game end)
+    // Remove all game resources that are inserted during setup_game
+    // These must be removed so they can be re-inserted fresh on next game start
     commands.remove_resource::<crate::ui::scoring::GameEndState>();
+    commands.remove_resource::<GameBoard>();
+    commands.remove_resource::<Players>();
+    commands.remove_resource::<Pyramid>();
+    commands.remove_resource::<LegBettingTiles>();
+    commands.remove_resource::<RaceBets>();
+    commands.remove_resource::<PlacedSpectatorTiles>();
+    commands.remove_resource::<TurnState>();
+    commands.remove_resource::<PlayerLegBetsStore>();
+    commands.remove_resource::<PlayerPyramidTokens>();
+    commands.remove_resource::<InitialSetupRolls>();
 
     info!("Game cleanup complete!");
 }
-
-/// Duration for camel to move from staging to board position
-const CAMEL_INITIAL_MOVE_DURATION: f32 = 0.6;
 
 /// System to animate initial camel placement rolls
 pub fn initial_roll_animation_system(
     mut commands: Commands,
     mut initial_rolls: Option<ResMut<InitialSetupRolls>>,
     mut ui_state: ResMut<crate::ui::hud::UiState>,
+    board: Res<GameBoard>,
     dice_query: Query<
         &crate::systems::animation::DiceRollAnimation,
         With<crate::systems::animation::DiceSprite>,
@@ -1092,7 +1214,10 @@ pub fn initial_roll_animation_system(
         Entity,
         (
             With<CamelSprite>,
-            With<crate::systems::animation::MovementAnimation>,
+            Or<(
+                With<crate::systems::animation::MovementAnimation>,
+                With<crate::systems::animation::MultiStepMovementAnimation>,
+            )>,
         ),
     >,
 ) {
@@ -1105,6 +1230,11 @@ pub fn initial_roll_animation_system(
     // Skip if all rolls are complete
     if rolls.all_complete {
         ui_state.initial_rolls_complete = true;
+        return;
+    }
+
+    // Wait for player to click the "Set up camels" button
+    if !rolls.started {
         return;
     }
 
@@ -1129,8 +1259,10 @@ pub fn initial_roll_animation_system(
     let camel_still_moving = !moving_camels.is_empty();
 
     // Start camel moving when dice enters settling phase
-    if rolls.current_dice_spawned && !rolls.current_camel_moving && dice_in_display_or_later {
-        let (camel_type, _value, target_pos) = rolls.camel_rolls[rolls.current_roll_index];
+    // Also trigger if dice has already finished (despawned) but camel hasn't moved yet
+    // This handles cases where the fast dice animation completes between frames
+    if rolls.current_dice_spawned && !rolls.current_camel_moving && (dice_in_display_or_later || dice_finished) {
+        let (camel_type, _value, space_index, stack_pos, _target_pos) = rolls.camel_rolls[rolls.current_roll_index];
 
         // Find the camel and start its movement animation
         match camel_type {
@@ -1138,12 +1270,18 @@ pub fn initial_roll_animation_system(
                 for (entity, camel, transform) in racing_camel_query.iter_mut() {
                     if camel.color == color {
                         let start_pos = transform.translation;
+                        let waypoints = generate_initial_waypoints_racing(
+                            &*board,
+                            start_pos,
+                            space_index,
+                            stack_pos,
+                            &rolls.placed_camels,
+                        );
                         commands
                             .entity(entity)
-                            .insert(crate::systems::animation::MovementAnimation::new(
-                                start_pos,
-                                target_pos,
-                                CAMEL_INITIAL_MOVE_DURATION,
+                            .insert(crate::systems::animation::MultiStepMovementAnimation::new(
+                                waypoints,
+                                CAMEL_HOP_DURATION,
                             ))
                             .remove::<PendingInitialMove>();
                         rolls.current_camel_moving = true;
@@ -1156,12 +1294,18 @@ pub fn initial_roll_animation_system(
                 for (entity, camel, transform) in crazy_camel_query.iter_mut() {
                     if camel.color == color {
                         let start_pos = transform.translation;
+                        let waypoints = generate_initial_waypoints_crazy(
+                            &*board,
+                            start_pos,
+                            space_index,
+                            stack_pos,
+                            &rolls.placed_camels,
+                        );
                         commands
                             .entity(entity)
-                            .insert(crate::systems::animation::MovementAnimation::new(
-                                start_pos,
-                                target_pos,
-                                CAMEL_INITIAL_MOVE_DURATION,
+                            .insert(crate::systems::animation::MultiStepMovementAnimation::new(
+                                waypoints,
+                                CAMEL_HOP_DURATION,
                             ))
                             .remove::<PendingInitialMove>();
                         rolls.current_camel_moving = true;
@@ -1185,6 +1329,10 @@ pub fn initial_roll_animation_system(
         && !camel_still_moving
         && dice_finished
     {
+        // Record this camel as placed for stack height calculations
+        let (_camel_type, _value, space_index, stack_pos, _target_pos) = rolls.camel_rolls[rolls.current_roll_index];
+        rolls.placed_camels.push((space_index, stack_pos));
+
         rolls.current_roll_index += 1;
         rolls.current_dice_spawned = false;
         rolls.current_camel_moving = false;
@@ -1200,7 +1348,7 @@ pub fn initial_roll_animation_system(
 
     // If we haven't spawned the current dice yet, spawn it
     if !rolls.current_dice_spawned && rolls.current_roll_index < rolls.camel_rolls.len() {
-        let (camel_type, value, _target_pos) = rolls.camel_rolls[rolls.current_roll_index];
+        let (camel_type, value, _space_index, _stack_pos, _target_pos) = rolls.camel_rolls[rolls.current_roll_index];
 
         // Spawn animated dice sprite in center of board
         let dice_pos = Vec3::new(0.0, 0.0, 100.0);

@@ -26,6 +26,7 @@ rustflags = [
 linker = "gcc"
 
 [env]
+BEVY_ASSET_ROOT = "."
 CC_x86_64-pc-windows-gnu = "gcc"
 CXX_x86_64-pc-windows-gnu = "g++"
 CC_x86_64-pc-windows-msvc = "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe"

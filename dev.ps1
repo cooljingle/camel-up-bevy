@@ -1,0 +1,2 @@
+$env:BEVY_ASSET_ROOT = "."
+dx serve --hot-patch --features "bevy/hotpatching"

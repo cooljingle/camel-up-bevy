@@ -121,7 +121,7 @@ impl PlayerSetupConfig {
 
             self.players.push(PlayerConfig {
                 name: format!("Player {}", num),
-                is_ai: false,
+                is_ai: true,
                 character_id: available,
             });
         }

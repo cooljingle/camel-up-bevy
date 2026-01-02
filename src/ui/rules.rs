@@ -1,8 +1,8 @@
 use bevy::prelude::*;
 use bevy_egui::egui;
 use crate::components::CamelColor;
-use crate::ui::hud::{camel_color_to_egui, draw_camel_silhouette, draw_mini_leg_bet_card, draw_pyramid_token_icon};
-use crate::ui::theme::{desert_button, gold_tab, DesertButtonStyle};
+use crate::ui::hud::{draw_camel_silhouette, draw_mini_leg_bet_card, draw_pyramid_token_icon};
+use crate::ui::theme::{desert_button, gold_tab, DesertButtonStyle, camel_color_to_egui};
 
 // Desert theme colors
 const SAND_COLOR: egui::Color32 = egui::Color32::from_rgb(0xED, 0xC9, 0x9A);
@@ -87,11 +87,7 @@ pub fn draw_rules_ui(
 
     // Main rules panel
     let screen_rect = ctx.input(|i| i.viewport_rect());
-    let panel_size = if is_mobile {
-        egui::vec2(screen_rect.width() * 0.95, screen_rect.height() * 0.90)
-    } else {
-        egui::vec2(750.0, 550.0)
-    };
+    let panel_size = egui::vec2(screen_rect.width() * 0.95, screen_rect.height() * 0.90);
 
     egui::Area::new(egui::Id::new("rules_panel"))
         .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
@@ -117,11 +113,7 @@ pub fn draw_rules_ui(
                     });
                     ui.add_space(12.0);
 
-                    if is_mobile {
-                        draw_mobile_layout(ui, rules_state);
-                    } else {
-                        draw_desktop_layout(ui, rules_state);
-                    }
+                    draw_mobile_layout(ui, rules_state);
 
                     ui.add_space(12.0);
 
@@ -133,33 +125,6 @@ pub fn draw_rules_ui(
                     });
                 });
         });
-}
-
-fn draw_desktop_layout(ui: &mut egui::Ui, rules_state: &mut RulesState) {
-    ui.horizontal(|ui| {
-        // Left: Vertical tabs using gold_tab theme
-        ui.vertical(|ui| {
-            ui.set_min_width(100.0);
-            for section in RulesSection::all() {
-                let selected = rules_state.current_section == section;
-                if gold_tab(ui, section.name(), selected).clicked() {
-                    rules_state.current_section = section;
-                    rules_state.demo_elapsed = 0.0;
-                }
-                ui.add_space(4.0);
-            }
-        });
-
-        ui.separator();
-
-        // Right: Content
-        egui::ScrollArea::vertical()
-            .max_height(400.0)
-            .show(ui, |ui| {
-                ui.set_min_width(520.0);
-                draw_section_content(ui, rules_state, false);
-            });
-    });
 }
 
 fn draw_mobile_layout(ui: &mut egui::Ui, rules_state: &mut RulesState) {
