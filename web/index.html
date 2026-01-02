@@ -10,6 +10,10 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="apple-touch-icon" href="icons/icon-192.png">
     <meta name="description" content="Play the Camel Up board game in your browser!">
+    <!-- Google Font - Aleo matches the in-game font -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Aleo:wght@400;700&display=swap" rel="stylesheet">
     <style>
         * {
             margin: 0;
@@ -53,32 +57,243 @@
             justify-content: center;
             align-items: center;
             background: #2d1f0f;
-            color: #d4a84b;
-            font-family: sans-serif;
+            font-family: 'Aleo', Georgia, serif;
             z-index: 1500;
         }
         #loading.hidden {
             display: none;
         }
+
+        /* Title with depth - matches in-game style */
         #loading h1 {
-            font-size: 2.5rem;
-            margin-bottom: 1rem;
+            font-size: 3rem;
+            font-weight: 700;
+            color: #FFD700;
+            text-shadow:
+                2px 2px 0 #6B4A1A,
+                4px 4px 0 #4a3520,
+                6px 6px 8px rgba(0,0,0,0.4);
+            letter-spacing: 0.12em;
+            margin-bottom: 0.5rem;
         }
-        #loading .spinner {
+
+        #loading .subtitle {
+            font-size: 1rem;
+            color: #d4a84b;
+            margin-bottom: 2rem;
+            font-weight: 400;
+        }
+
+        /*
+         * 4-LAYER CAMEL SYSTEM
+         * Matches the in-game style: shadow -> border -> main -> highlight
+         * Colors from main_menu.rs:
+         * - CAMEL_MAIN: #C4A06A (sandy tan)
+         * - CAMEL_BORDER: #8A6A3A (darker border)
+         * - CAMEL_HIGHLIGHT: #E0C89A (lighter highlight)
+         * - Shadow: rgba(0,0,0,0.15)
+         */
+
+        .camel-loader {
+            position: relative;
+            width: 100px;
+            height: 70px;
+        }
+
+        .camel {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            animation: bob 0.3s ease-in-out infinite;
+        }
+
+        @keyframes bob {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-2px); }
+        }
+
+        /* Each camel part uses stacked elements for 4-layer effect */
+        .camel-part {
+            position: absolute;
+        }
+
+        /* Shadow layer - offset down-right */
+        .camel-part .shadow {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.15);
+            transform: translate(3px, 3px);
+        }
+
+        /* Border layer - slightly larger */
+        .camel-part .border {
+            position: absolute;
+            background: #8A6A3A;
+        }
+
+        /* Main layer */
+        .camel-part .main {
+            position: absolute;
+            background: #C4A06A;
+        }
+
+        /* Highlight layer - smaller, offset up-left */
+        .camel-part .highlight {
+            position: absolute;
+            background: #E0C89A;
+        }
+
+        /* === BODY === */
+        .camel-body {
+            left: 25px;
+            top: 22px;
+        }
+        .camel-body .shadow,
+        .camel-body .border,
+        .camel-body .main {
             width: 50px;
-            height: 50px;
-            border: 4px solid #4a3520;
-            border-top-color: #d4a84b;
+            height: 22px;
+            border-radius: 4px;
+        }
+        .camel-body .border {
+            width: 53px;
+            height: 25px;
+            margin: -1.5px;
+        }
+        .camel-body .highlight {
+            width: 25px;
+            height: 9px;
+            border-radius: 2px;
+            top: 4px;
+            left: 8px;
+        }
+
+        /* === HUMP === */
+        .camel-hump {
+            left: 38px;
+            top: 6px;
+        }
+        .camel-hump .shadow,
+        .camel-hump .border,
+        .camel-hump .main {
+            width: 20px;
+            height: 18px;
+            border-radius: 50% 50% 20% 20%;
+        }
+        .camel-hump .border {
+            width: 23px;
+            height: 21px;
+            margin: -1.5px;
+        }
+        .camel-hump .highlight {
+            width: 10px;
+            height: 7px;
             border-radius: 50%;
-            animation: spin 1s linear infinite;
+            top: 3px;
+            left: 4px;
         }
-        @keyframes spin {
-            to { transform: rotate(360deg); }
+
+        /* === NECK === */
+        .camel-neck {
+            left: 66px;
+            top: 10px;
         }
+        .camel-neck .shadow,
+        .camel-neck .border,
+        .camel-neck .main {
+            width: 10px;
+            height: 22px;
+            border-radius: 3px;
+            transform: rotate(-8deg);
+        }
+        .camel-neck .border {
+            width: 13px;
+            height: 25px;
+            margin: -1.5px;
+        }
+        .camel-neck .shadow {
+            transform: translate(3px, 3px) rotate(-8deg);
+        }
+        .camel-neck .highlight {
+            display: none;
+        }
+
+        /* === HEAD === */
+        .camel-head {
+            left: 68px;
+            top: 2px;
+        }
+        .camel-head .shadow,
+        .camel-head .border,
+        .camel-head .main {
+            width: 18px;
+            height: 12px;
+            border-radius: 4px;
+        }
+        .camel-head .border {
+            width: 21px;
+            height: 15px;
+            margin: -1.5px;
+        }
+        .camel-head .highlight {
+            width: 9px;
+            height: 5px;
+            border-radius: 2px;
+            top: 2px;
+            left: 3px;
+        }
+
+        /* === LEGS === */
+        .camel-leg {
+            top: 42px;
+            transform-origin: top center;
+        }
+        .camel-leg .shadow,
+        .camel-leg .border,
+        .camel-leg .main {
+            width: 7px;
+            height: 20px;
+            border-radius: 2px;
+        }
+        .camel-leg .border {
+            width: 9px;
+            height: 22px;
+            margin: -1px;
+        }
+        .camel-leg .highlight {
+            display: none;
+        }
+
+        /* Leg positions and animations */
+        .leg-1 { left: 30px; animation: walk 0.6s ease-in-out infinite; }
+        .leg-2 { left: 40px; animation: walk 0.6s ease-in-out infinite 0.3s; }
+        .leg-3 { left: 58px; animation: walk 0.6s ease-in-out infinite 0.15s; }
+        .leg-4 { left: 68px; animation: walk 0.6s ease-in-out infinite 0.45s; }
+
+        @keyframes walk {
+            0%, 100% { transform: rotate(-12deg); }
+            50% { transform: rotate(12deg); }
+        }
+
+        /* Loading progress text */
         #loading .progress {
-            margin-top: 1rem;
-            font-size: 0.9rem;
-            opacity: 0.8;
+            margin-top: 1.5rem;
+            font-size: 1rem;
+            color: #d4a84b;
+            font-weight: 400;
+        }
+
+        /* Animated dots */
+        .dots::after {
+            content: '';
+            animation: dots 1.5s steps(4, end) infinite;
+        }
+
+        @keyframes dots {
+            0% { content: ''; }
+            25% { content: '.'; }
+            50% { content: '..'; }
+            75% { content: '...'; }
+            100% { content: ''; }
         }
 
         /* Fullscreen hint during gameplay */
@@ -90,7 +305,7 @@
             color: #d4a84b;
             padding: 8px 16px;
             border-radius: 4px;
-            font-family: sans-serif;
+            font-family: 'Aleo', Georgia, serif;
             font-size: 12px;
             cursor: pointer;
             z-index: 100;
@@ -108,9 +323,68 @@
 <body>
     <!-- Loading screen - shown while WASM initializes -->
     <div id="loading">
-        <h1>Camel Up</h1>
-        <div class="spinner"></div>
-        <p class="progress">Loading game...</p>
+        <h1>CAMEL UP</h1>
+        <p class="subtitle">A camel racing board game</p>
+
+        <!-- 4-Layer Animated Camel Loader -->
+        <div class="camel-loader">
+            <div class="camel">
+                <!-- Legs first (behind body) -->
+                <div class="camel-part camel-leg leg-1">
+                    <div class="shadow"></div>
+                    <div class="border"></div>
+                    <div class="main"></div>
+                </div>
+                <div class="camel-part camel-leg leg-2">
+                    <div class="shadow"></div>
+                    <div class="border"></div>
+                    <div class="main"></div>
+                </div>
+                <div class="camel-part camel-leg leg-3">
+                    <div class="shadow"></div>
+                    <div class="border"></div>
+                    <div class="main"></div>
+                </div>
+                <div class="camel-part camel-leg leg-4">
+                    <div class="shadow"></div>
+                    <div class="border"></div>
+                    <div class="main"></div>
+                </div>
+
+                <!-- Body -->
+                <div class="camel-part camel-body">
+                    <div class="shadow"></div>
+                    <div class="border"></div>
+                    <div class="main"></div>
+                    <div class="highlight"></div>
+                </div>
+
+                <!-- Hump -->
+                <div class="camel-part camel-hump">
+                    <div class="shadow"></div>
+                    <div class="border"></div>
+                    <div class="main"></div>
+                    <div class="highlight"></div>
+                </div>
+
+                <!-- Neck -->
+                <div class="camel-part camel-neck">
+                    <div class="shadow"></div>
+                    <div class="border"></div>
+                    <div class="main"></div>
+                </div>
+
+                <!-- Head -->
+                <div class="camel-part camel-head">
+                    <div class="shadow"></div>
+                    <div class="border"></div>
+                    <div class="main"></div>
+                    <div class="highlight"></div>
+                </div>
+            </div>
+        </div>
+
+        <p class="progress">Loading game<span class="dots"></span></p>
     </div>
 
     <!-- Fullscreen hint (desktop only) -->

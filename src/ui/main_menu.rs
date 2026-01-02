@@ -17,8 +17,10 @@ const PYRAMID_DARK: egui::Color32 = egui::Color32::from_rgb(0xA0, 0x7A, 0x30);
 const PYRAMID_OUTLINE: egui::Color32 = egui::Color32::from_rgb(0x6B, 0x4A, 0x1A);
 const SUN_COLOR: egui::Color32 = egui::Color32::from_rgb(0xFF, 0xD7, 0x00);
 
-// Colors for walking camels
-const CAMEL_BODY: egui::Color32 = egui::Color32::from_rgb(0x8B, 0x5A, 0x2B);
+// Colors for walking camels - sandy colored with 4-layer style like in-game camels
+const CAMEL_MAIN: egui::Color32 = egui::Color32::from_rgb(0xC4, 0xA0, 0x6A);      // Sandy tan
+const CAMEL_BORDER: egui::Color32 = egui::Color32::from_rgb(0x8A, 0x6A, 0x3A);    // Darker border
+const CAMEL_HIGHLIGHT: egui::Color32 = egui::Color32::from_rgb(0xE0, 0xC8, 0x9A); // Lighter highlight
 
 // Player colors (same as hud.rs)
 const PLAYER_COLORS: [egui::Color32; 8] = [
@@ -237,7 +239,7 @@ fn draw_walking_camel(
     scale: f32,
     time: f32,
     phase_offset: f32,
-    color: egui::Color32,
+    alpha: u8,
 ) {
     // Camel dimensions (scaled)
     let body_w = 32.0 * scale;
@@ -258,61 +260,60 @@ fn draw_walking_camel(
     // Four legs with different phase offsets for walking gait
     let leg_phases = [0.0, std::f32::consts::PI, std::f32::consts::PI * 0.5, std::f32::consts::PI * 1.5];
 
-    // Draw shadow
+    // Colors with alpha for distance fading
+    let shadow_color = egui::Color32::from_rgba_unmultiplied(0, 0, 0, (40.0 * alpha as f32 / 255.0) as u8);
+    let border_color = egui::Color32::from_rgba_unmultiplied(CAMEL_BORDER.r(), CAMEL_BORDER.g(), CAMEL_BORDER.b(), alpha);
+    let main_color = egui::Color32::from_rgba_unmultiplied(CAMEL_MAIN.r(), CAMEL_MAIN.g(), CAMEL_MAIN.b(), alpha);
+    let highlight_color = egui::Color32::from_rgba_unmultiplied(CAMEL_HIGHLIGHT.r(), CAMEL_HIGHLIGHT.g(), CAMEL_HIGHLIGHT.b(), alpha);
+
     let shadow_offset = 2.0 * scale;
-    let shadow_color = egui::Color32::from_rgba_unmultiplied(0, 0, 0, 40);
+    let border_expand = 1.5 * scale;
 
-    // Body shadow
-    painter.rect_filled(
-        egui::Rect::from_center_size(
-            egui::pos2(x + shadow_offset, y + shadow_offset),
-            egui::vec2(body_w, body_h),
-        ),
-        2.0 * scale,
-        shadow_color,
-    );
+    // Helper to draw a 4-layer rect: shadow, border, main, optional highlight
+    let draw_layered_rect = |painter: &egui::Painter, cx: f32, cy: f32, w: f32, h: f32, rounding: f32, with_highlight: bool| {
+        // Shadow layer
+        painter.rect_filled(
+            egui::Rect::from_center_size(
+                egui::pos2(cx + shadow_offset, cy + shadow_offset),
+                egui::vec2(w, h),
+            ),
+            rounding,
+            shadow_color,
+        );
+        // Border layer (slightly larger)
+        painter.rect_filled(
+            egui::Rect::from_center_size(
+                egui::pos2(cx, cy),
+                egui::vec2(w + border_expand, h + border_expand),
+            ),
+            rounding,
+            border_color,
+        );
+        // Main color layer
+        painter.rect_filled(
+            egui::Rect::from_center_size(
+                egui::pos2(cx, cy),
+                egui::vec2(w, h),
+            ),
+            rounding,
+            main_color,
+        );
+        // Highlight layer (smaller, offset up-left)
+        if with_highlight {
+            let highlight_w = w * 0.5;
+            let highlight_h = h * 0.4;
+            painter.rect_filled(
+                egui::Rect::from_center_size(
+                    egui::pos2(cx - w * 0.15, cy - h * 0.2),
+                    egui::vec2(highlight_w, highlight_h),
+                ),
+                rounding * 0.5,
+                highlight_color,
+            );
+        }
+    };
 
-    // Draw body
-    painter.rect_filled(
-        egui::Rect::from_center_size(
-            egui::pos2(x, y),
-            egui::vec2(body_w, body_h),
-        ),
-        2.0 * scale,
-        color,
-    );
-
-    // Draw hump
-    painter.rect_filled(
-        egui::Rect::from_center_size(
-            egui::pos2(x - 2.0 * scale, y - body_h / 2.0 - hump_h / 2.0 + 2.0 * scale),
-            egui::vec2(hump_w, hump_h),
-        ),
-        4.0 * scale,
-        color,
-    );
-
-    // Draw neck
-    painter.rect_filled(
-        egui::Rect::from_center_size(
-            egui::pos2(x + body_w / 2.0 - 2.0 * scale, y - body_h / 2.0 - neck_h / 2.0 + 3.0 * scale),
-            egui::vec2(neck_w, neck_h),
-        ),
-        1.0 * scale,
-        color,
-    );
-
-    // Draw head
-    painter.rect_filled(
-        egui::Rect::from_center_size(
-            egui::pos2(x + body_w / 2.0 + 2.0 * scale, y - body_h / 2.0 - neck_h + 2.0 * scale),
-            egui::vec2(head_w, head_h),
-        ),
-        2.0 * scale,
-        color,
-    );
-
-    // Draw legs with walking animation
+    // Draw legs first (behind body) with walking animation
     let leg_base_y = y + body_h / 2.0 + leg_h / 2.0;
     let leg_x_positions = [
         x - body_w / 2.0 + 5.0 * scale,  // Back left
@@ -323,15 +324,28 @@ fn draw_walking_camel(
 
     for (i, &leg_x) in leg_x_positions.iter().enumerate() {
         let leg_offset = ((time * walk_speed + phase_offset + leg_phases[i]).sin() * leg_amplitude).abs();
-        painter.rect_filled(
-            egui::Rect::from_center_size(
-                egui::pos2(leg_x, leg_base_y - leg_offset / 2.0),
-                egui::vec2(leg_w, leg_h - leg_offset),
-            ),
-            1.0 * scale,
-            color,
-        );
+        let current_leg_h = leg_h - leg_offset;
+        let leg_cy = leg_base_y - leg_offset / 2.0;
+        draw_layered_rect(painter, leg_x, leg_cy, leg_w, current_leg_h, 1.0 * scale, false);
     }
+
+    // Draw body
+    draw_layered_rect(painter, x, y, body_w, body_h, 2.0 * scale, true);
+
+    // Draw hump (with highlight)
+    let hump_cx = x - 2.0 * scale;
+    let hump_cy = y - body_h / 2.0 - hump_h / 2.0 + 2.0 * scale;
+    draw_layered_rect(painter, hump_cx, hump_cy, hump_w, hump_h, 4.0 * scale, true);
+
+    // Draw neck
+    let neck_cx = x + body_w / 2.0 - 2.0 * scale;
+    let neck_cy = y - body_h / 2.0 - neck_h / 2.0 + 3.0 * scale;
+    draw_layered_rect(painter, neck_cx, neck_cy, neck_w, neck_h, 1.0 * scale, false);
+
+    // Draw head (with highlight)
+    let head_cx = x + body_w / 2.0 + 2.0 * scale;
+    let head_cy = y - body_h / 2.0 - neck_h + 2.0 * scale;
+    draw_layered_rect(painter, head_cx, head_cy, head_w, head_h, 2.0 * scale, true);
 }
 
 /// Draw the pyramid scene as a background decoration
@@ -432,15 +446,9 @@ fn draw_pyramid_background(painter: &egui::Painter, rect: egui::Rect, time: f32)
         let camel_x = rect.left() - 50.0 * scale + x_offset;
         let camel_y = horizon_y + y_off;
 
-        // Use darker color for distant camels (smaller scale = farther away)
-        let alpha = (200.0 * scale) as u8;
-        let camel_color = egui::Color32::from_rgba_unmultiplied(
-            CAMEL_BODY.r(),
-            CAMEL_BODY.g(),
-            CAMEL_BODY.b(),
-            alpha.max(100),
-        );
+        // Use alpha for distance fading (smaller scale = farther away = more faded)
+        let alpha = ((200.0 * scale) as u8).max(100);
 
-        draw_walking_camel(painter, camel_x, camel_y, scale, time, phase, camel_color);
+        draw_walking_camel(painter, camel_x, camel_y, scale, time, phase, alpha);
     }
 }

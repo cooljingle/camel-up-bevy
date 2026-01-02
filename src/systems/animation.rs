@@ -735,18 +735,17 @@ pub struct CrownMarker;
 /// Component for crown drop animation
 #[derive(Component)]
 pub struct CrownDropAnimation {
-    pub target_entity: Entity,
-    pub start_y: f32,
+    pub final_pos: Vec3,
+    pub drop_height: f32,
     pub elapsed: f32,
     pub duration: f32,
 }
 
 impl CrownDropAnimation {
-    #[allow(dead_code)]
-    pub fn new(target_entity: Entity, start_y: f32, duration: f32) -> Self {
+    pub fn new(final_pos: Vec3, drop_height: f32, duration: f32) -> Self {
         Self {
-            target_entity,
-            start_y,
+            final_pos,
+            drop_height,
             elapsed: 0.0,
             duration,
         }
@@ -754,7 +753,8 @@ impl CrownDropAnimation {
 }
 
 /// Spawn a crown entity with layered sprites matching the camel style
-pub fn spawn_crown(commands: &mut Commands, position: Vec3) -> Entity {
+/// If drop_height is Some, the crown will animate dropping from above
+pub fn spawn_crown(commands: &mut Commands, position: Vec3, drop_height: Option<f32>) -> Entity {
     // Crown colors
     let gold = Color::srgb(1.0, 0.84, 0.0);
     let gold_dark = Color::srgb(0.6, 0.5, 0.0);      // Border
@@ -774,12 +774,25 @@ pub fn spawn_crown(commands: &mut Commands, position: Vec3) -> Entity {
     let point_spacing = 6.0;
     let point_y = base_height / 2.0 + point_height / 2.0;
 
-    // Spawn crown directly at final position (no animation)
-    let crown_entity = commands.spawn((
+    // Start position: offset upward if animating, otherwise at final position
+    let start_pos = if let Some(height) = drop_height {
+        Vec3::new(position.x, position.y + height, position.z)
+    } else {
+        position
+    };
+
+    let mut entity_commands = commands.spawn((
         CrownMarker,
-        Transform::from_translation(position),
+        Transform::from_translation(start_pos),
         Visibility::default(),
-    )).with_children(|parent| {
+    ));
+
+    // Add drop animation if requested
+    if let Some(height) = drop_height {
+        entity_commands.insert(CrownDropAnimation::new(position, height, 0.8));
+    }
+
+    let crown_entity = entity_commands.with_children(|parent| {
         // Shadow layer (offset +2, -2)
         let shadow_offset = Vec3::new(2.0, -2.0, -0.3);
 
@@ -899,39 +912,28 @@ pub fn crown_drop_system(
     mut commands: Commands,
     time: Res<Time>,
     mut crown_query: Query<(Entity, &mut Transform, &mut CrownDropAnimation), With<CrownMarker>>,
-    camel_query: Query<&Transform, (With<crate::components::Camel>, Without<CrownMarker>)>,
 ) {
     for (entity, mut crown_transform, mut animation) in crown_query.iter_mut() {
         animation.elapsed += time.delta_secs();
-
-        // Get the target camel's current position
-        let target_pos = if let Ok(camel_transform) = camel_query.get(animation.target_entity) {
-            camel_transform.translation
-        } else {
-            // If camel not found, just drop to a default position
-            Vec3::new(crown_transform.translation.x, 100.0, crown_transform.translation.z)
-        };
-
-        // Crown lands on camel's head (Y + 35 to account for camel height)
-        let target_y = target_pos.y + 35.0;
 
         let t = (animation.elapsed / animation.duration).clamp(0.0, 1.0);
 
         // Ease-out bounce for satisfying landing
         let eased_t = ease_out_bounce(t);
 
-        // Interpolate Y position from start to target
-        let current_y = animation.start_y + (target_y - animation.start_y) * eased_t;
+        // Interpolate Y position from start (final + drop_height) down to final
+        let start_y = animation.final_pos.y + animation.drop_height;
+        let current_y = start_y + (animation.final_pos.y - start_y) * eased_t;
 
-        // Follow camel's X position
-        crown_transform.translation.x = target_pos.x;
+        crown_transform.translation.x = animation.final_pos.x;
         crown_transform.translation.y = current_y;
+        crown_transform.translation.z = animation.final_pos.z;
 
         // Animation complete
         if t >= 1.0 {
             commands.entity(entity).remove::<CrownDropAnimation>();
             // Snap to final position
-            crown_transform.translation.y = target_y;
+            crown_transform.translation = animation.final_pos;
         }
     }
 }
