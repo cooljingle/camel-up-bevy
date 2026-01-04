@@ -4190,12 +4190,12 @@ pub fn leg_scoring_modal_ui(
 
         // Despawn visual spectator tile entities
         for entity in spectator_tile_entities.iter() {
-            commands.entity(entity).despawn_recursive();
+            commands.entity(entity).despawn();
         }
 
         // Despawn dice sprites in tents from previous leg
         for entity in dice_sprite_entities.iter() {
-            commands.entity(entity).despawn_recursive();
+            commands.entity(entity).despawn();
         }
 
         ui_state.show_leg_scoring = false;
