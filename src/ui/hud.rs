@@ -17,6 +17,7 @@ use crate::ui::theme::{
     camel_color_to_egui, crazy_camel_color_to_egui, desert_button, desktop, draw_overlapping_stack,
     draw_spaced_row, layout, mobile, DesertButtonStyle, PLAYER_COLORS,
 };
+use bevy::hierarchy::DespawnRecursiveExt;
 use bevy::prelude::*;
 use bevy::window::{MonitorSelection, WindowMode};
 use bevy_egui::{egui, EguiContexts};

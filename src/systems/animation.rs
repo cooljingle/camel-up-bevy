@@ -1,3 +1,4 @@
+use bevy::hierarchy::DespawnRecursiveExt;
 use bevy::prelude::*;
 use rand::Rng;
 use std::f32::consts::TAU;
