@@ -1167,7 +1167,7 @@ pub fn cleanup_game(
     mut ai_think_timer: ResMut<crate::game::ai::AiThinkTimer>,
 ) {
     for entity in game_entities.iter() {
-        commands.entity(entity).despawn();
+        commands.entity(entity).despawn_recursive();
     }
 
     // Reset all UI and game state

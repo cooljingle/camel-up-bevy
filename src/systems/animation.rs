@@ -391,7 +391,7 @@ pub fn dice_roll_animation_system(
                     // Otherwise move to tent
                     if anim.target_tent_pos == anim.original_pos {
                         // Initial setup dice - despawn directly (fast animation)
-                        commands.entity(entity).despawn();
+                        commands.entity(entity).despawn_recursive();
                     } else {
                         // Game dice - move to tent
                         anim.phase = DiceRollPhase::MovingToTent;
