@@ -1058,6 +1058,7 @@ pub fn setup_game(
     existing_camels: Query<Entity, With<Camel>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
+    asset_server: Res<AssetServer>,
 ) {
     // Don't setup if game entities already exist (returning from leg scoring)
     if !existing_camels.is_empty() {
