@@ -134,3 +134,17 @@ impl PyramidShakeAnimation {
 /// Marker component for the pyramid hover border sprite
 #[derive(Component)]
 pub struct PyramidHoverBorder;
+
+/// Marker component for the setup arrow pointing to pyramid
+#[derive(Component)]
+pub struct SetupArrow;
+
+/// Marker component for the setup instruction text
+#[derive(Component)]
+pub struct SetupText;
+
+/// Animation state for pyramid pulse during setup
+#[derive(Component)]
+pub struct PyramidSetupPulseAnimation {
+    pub elapsed: f32,
+}

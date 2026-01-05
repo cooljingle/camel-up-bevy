@@ -1006,6 +1006,46 @@ pub fn animate_pyramid_hover(
     }
 }
 
+/// Animate the pyramid pulsing during setup to prompt the user to tap
+pub fn animate_pyramid_setup_pulse(
+    time: Res<Time>,
+    ui_state: Res<crate::ui::hud::UiState>,
+    initial_rolls: Option<Res<crate::systems::setup::InitialSetupRolls>>,
+    mut pyramid_query: Query<(&mut Transform, Option<&PyramidShakeAnimation>), With<PyramidRollButton>>,
+    dice_query: Query<&DiceRollAnimation>,
+) {
+    // Only pulse during setup, when not started or when waiting for next tap
+    let should_pulse = if let Some(rolls) = initial_rolls {
+        // Setup phase: pulse when waiting for user to start or when dice is done rolling
+        !ui_state.initial_rolls_complete && (
+            !rolls.started ||
+            (dice_query.is_empty() && rolls.current_roll_index < rolls.camel_rolls.len())
+        )
+    } else {
+        false
+    };
+
+    if !should_pulse {
+        return;
+    }
+
+    const PULSE_SCALE_MIN: f32 = 1.0;
+    const PULSE_SCALE_MAX: f32 = 1.15;
+    const PULSE_SPEED: f32 = 2.0; // Hz
+
+    for (mut transform, shaking) in pyramid_query.iter_mut() {
+        // Don't modify scale while shaking
+        if shaking.is_some() {
+            continue;
+        }
+
+        let pulse = (time.elapsed_secs() * PULSE_SPEED * std::f32::consts::TAU).sin();
+        let pulse_normalized = (pulse + 1.0) / 2.0; // Map -1..1 to 0..1
+        let scale = PULSE_SCALE_MIN + (PULSE_SCALE_MAX - PULSE_SCALE_MIN) * pulse_normalized;
+        transform.scale = Vec3::splat(scale);
+    }
+}
+
 // ============================================================================
 // Camera Zoom Animation System
 // ============================================================================

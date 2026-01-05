@@ -2044,21 +2044,8 @@ fn render_mobile_ui(
         .show(ctx, |ui| {
             ui.add_space(4.0);
 
-            // Show "Set up camels" button when not yet started
-            if !ui_state.initial_rolls_complete {
-                if let Some(ref mut rolls) = initial_rolls {
-                    if !rolls.started {
-                        ui.horizontal(|ui| {
-                            ui.add_space((ui.available_width() - 150.0) / 2.0);
-                            if desert_button(ui, "Set up camels", &DesertButtonStyle::default())
-                                .clicked()
-                            {
-                                rolls.started = true;
-                            }
-                        });
-                    }
-                }
-            } else {
+            // No button needed - player taps pyramid to set up camels
+            if ui_state.initial_rolls_complete {
                 // Show leg bet cards only (pyramid is now a Bevy sprite on the game board)
                 let card_width = 36.0;
                 let card_height = 48.0;
@@ -2317,16 +2304,8 @@ fn render_desktop_ui(
         // Only allow actions if not already taken this turn AND initial rolls are complete AND leg scoring is not showing
         let can_act = !turn_state.action_taken && !current.is_ai && ui_state.initial_rolls_complete && !ui_state.show_leg_scoring;
 
-        if !ui_state.initial_rolls_complete {
-            if let Some(ref mut rolls) = initial_rolls {
-                if !rolls.started {
-                    if desert_button(ui, "Set up camels", &DesertButtonStyle::default()).clicked() {
-                        rolls.started = true;
-                    }
-                    ui.add_space(5.0);
-                }
-            }
-        } else if can_act {
+        // No button needed - player taps pyramid to set up camels
+        if can_act && ui_state.initial_rolls_complete {
             ui.label(egui::RichText::new("Choose an action:").color(egui::Color32::LIGHT_GREEN));
             ui.add_space(5.0);
         }

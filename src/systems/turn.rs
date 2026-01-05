@@ -808,11 +808,59 @@ pub fn handle_pyramid_click(
     turn_state: Res<TurnState>,
     pyramid: Res<Pyramid>,
     shake_query: Query<(), With<PyramidShakeAnimation>>,
+    mut initial_rolls: Option<ResMut<crate::systems::setup::InitialSetupRolls>>,
+    dice_query: Query<(), With<crate::systems::animation::DiceSprite>>,
 ) {
-    // Don't process if initial rolls aren't complete
+    // === SETUP PHASE: Handle pyramid clicks during initial setup ===
     if !ui_state.initial_rolls_complete {
+        if let Some(ref mut rolls) = initial_rolls {
+            // Don't allow click if dice is currently rolling
+            if !dice_query.is_empty() {
+                return;
+            }
+
+            // Don't allow click if already shaking
+            if !shake_query.is_empty() {
+                return;
+            }
+
+            // Get click/tap position
+            let click_pos = if mouse_input.just_pressed(MouseButton::Left) {
+                windows.single().ok().and_then(|w| w.cursor_position())
+            } else if let Some(touch) = touches.iter_just_pressed().next() {
+                Some(touch.position())
+            } else {
+                None
+            };
+
+            let Some(screen_pos) = click_pos else { return };
+            let Ok((camera, camera_transform)) = camera_query.single() else { return };
+
+            // Convert screen position to world position
+            let Ok(world_pos) = camera.viewport_to_world_2d(camera_transform, screen_pos) else { return };
+
+            // Check if click is on pyramid
+            let pyramid_size = Vec2::splat(PYRAMID_SIZE);
+            let half_size = pyramid_size * 0.5;
+
+            for transform in pyramid_query.iter() {
+                let pyramid_pos = transform.translation().truncate();
+                let min = pyramid_pos - half_size;
+                let max = pyramid_pos + half_size;
+
+                if world_pos.x >= min.x && world_pos.x <= max.x
+                    && world_pos.y >= min.y && world_pos.y <= max.y
+                {
+                    // Clicked on pyramid during setup - start the setup rolls!
+                    rolls.started = true;
+                    return;
+                }
+            }
+        }
         return;
     }
+
+    // === NORMAL GAMEPLAY: Handle pyramid clicks after setup ===
 
     // Don't process if showing leg scoring modal
     if ui_state.show_leg_scoring {

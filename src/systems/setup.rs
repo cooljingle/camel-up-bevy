@@ -880,6 +880,72 @@ fn spawn_gold_coin(
     ));
 }
 
+/// Spawn the setup arrow and text above the pyramid
+fn spawn_setup_instructions(
+    commands: &mut Commands,
+    asset_server: &Res<AssetServer>,
+) {
+    let arrow_y = PYRAMID_Y_POSITION + PYRAMID_SIZE / 2.0 + 45.0;
+    let text_y = arrow_y + 35.0;
+    let text_color = Color::srgb(0.42, 0.29, 0.10); // #6B4A1A (gold outline color)
+
+    // Load Aleo font
+    let font = asset_server.load("fonts/Aleo-Variable.ttf");
+
+    // Create arrow pointing down to pyramid using simple rectangles
+    // Arrow shaft (vertical line)
+    commands.spawn((
+        DespawnOnExit(GameState::Playing),
+        board::SetupArrow,
+        Sprite {
+            color: text_color,
+            custom_size: Some(Vec2::new(4.0, 25.0)),
+            ..default()
+        },
+        Transform::from_xyz(0.0, arrow_y, PYRAMID_BASE_Z + 1.0),
+    ));
+
+    // Arrow head - left diagonal
+    commands.spawn((
+        DespawnOnExit(GameState::Playing),
+        board::SetupArrow,
+        Sprite {
+            color: text_color,
+            custom_size: Some(Vec2::new(20.0, 4.0)),
+            ..default()
+        },
+        Transform::from_xyz(0.0, arrow_y - 12.5, PYRAMID_BASE_Z + 1.0)
+            .with_rotation(Quat::from_rotation_z(-std::f32::consts::FRAC_PI_4)),
+    ));
+
+    // Arrow head - right diagonal
+    commands.spawn((
+        DespawnOnExit(GameState::Playing),
+        board::SetupArrow,
+        Sprite {
+            color: text_color,
+            custom_size: Some(Vec2::new(20.0, 4.0)),
+            ..default()
+        },
+        Transform::from_xyz(0.0, arrow_y - 12.5, PYRAMID_BASE_Z + 1.0)
+            .with_rotation(Quat::from_rotation_z(std::f32::consts::FRAC_PI_4)),
+    ));
+
+    // Spawn "Set up camels" text
+    commands.spawn((
+        DespawnOnExit(GameState::Playing),
+        board::SetupText,
+        Text2d::new("Set up camels"),
+        TextFont {
+            font: font.clone(),
+            font_size: 28.0,
+            ..default()
+        },
+        TextColor(text_color),
+        Transform::from_xyz(0.0, text_y, PYRAMID_BASE_Z + 1.0),
+    ));
+}
+
 /// Identifies which type of camel is being rolled for initial setup
 #[derive(Clone, Copy)]
 pub enum InitialRollCamel {
@@ -1149,6 +1215,9 @@ pub fn setup_game(
     // Spawn pyramid roll button below the track
     spawn_pyramid_button(&mut commands, &mut meshes, &mut materials);
 
+    // Spawn setup instructions (arrow and text)
+    spawn_setup_instructions(&mut commands, &asset_server);
+
     info!("Game setup complete!");
 }
 
@@ -1186,6 +1255,22 @@ pub fn cleanup_game(
     commands.remove_resource::<InitialSetupRolls>();
 
     info!("Game cleanup complete!");
+}
+
+/// System to hide setup instructions when initial rolls are complete
+pub fn hide_setup_instructions_system(
+    ui_state: Res<crate::ui::hud::UiState>,
+    mut arrow_query: Query<&mut Visibility, (With<board::SetupArrow>, Without<board::SetupText>)>,
+    mut text_query: Query<&mut Visibility, (With<board::SetupText>, Without<board::SetupArrow>)>,
+) {
+    if ui_state.initial_rolls_complete {
+        for mut visibility in arrow_query.iter_mut() {
+            *visibility = Visibility::Hidden;
+        }
+        for mut visibility in text_query.iter_mut() {
+            *visibility = Visibility::Hidden;
+        }
+    }
 }
 
 /// System to animate initial camel placement rolls
