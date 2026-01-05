@@ -1209,7 +1209,8 @@ pub fn game_hud_ui(
     }
 
     // Shared current player color (used in multiple places)
-    let current_player_color = PLAYER_COLORS[players.current_player().color_index % PLAYER_COLORS.len()];
+    let current_player_color =
+        PLAYER_COLORS[players.current_player().color_index % PLAYER_COLORS.len()];
 
     // Top bar - Game info (responsive based on layout mode)
     egui::TopBottomPanel::top("game_info").show(ctx, |ui| {
@@ -1625,6 +1626,8 @@ fn render_mobile_ui(
                                     player: &crate::components::PlayerData,
                                     card_width: f32|
              -> Option<egui::Pos2> {
+                const MARGIN: f32 = 2.0;
+                ui.add_space(MARGIN);
                 let is_current = i == players.current_player_index;
                 let player_color = PLAYER_COLORS[player.color_index % PLAYER_COLORS.len()];
 
@@ -1641,7 +1644,7 @@ fn render_mobile_ui(
 
                 let mut current_player_pos = None;
                 frame.show(ui, |ui| {
-                    ui.set_width(card_width);
+                    ui.set_width(card_width - MARGIN * 10.0);
                     ui.horizontal(|ui| {
                         // Avatar
                         let avatar_size = 22.0;
@@ -1697,50 +1700,29 @@ fn render_mobile_ui(
                         }
                     });
                 });
+                ui.add_space(MARGIN);
                 current_player_pos
             };
 
             // Calculate card width based on available space
             let available_width = ui.available_width();
-            let spacing_between = 2.0;
-            let card_width = layout::distributed_width(available_width, per_row, spacing_between);
+            let card_width = (available_width / per_row as f32).floor();
 
-            // Row 1: First batch of players (centered)
-            ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
+            // Draw all players in rows
+            for row_start in (0..player_count).step_by(per_row) {
+                ui.add_space(2.0); // top
                 ui.horizontal(|ui| {
-                    let first_batch = per_row.min(player_count);
-                    for i in 0..first_batch {
+                    let row_end = (row_start + per_row).min(player_count);
+                    for i in row_start..row_end {
                         if let Some(pos) = draw_player_card(ui, i, &players.players[i], card_width)
                         {
                             ui_state.player_bet_area_pos = Some(pos);
                         }
-                        if i < first_batch - 1 {
-                            ui.add_space(2.0);
-                        }
                     }
                 });
-            });
-
-            // Row 2: Remaining players (if any, centered)
-            if player_count > per_row {
                 ui.add_space(2.0);
-                ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
-                    ui.horizontal(|ui| {
-                        for i in per_row..player_count {
-                            if let Some(pos) =
-                                draw_player_card(ui, i, &players.players[i], card_width)
-                            {
-                                ui_state.player_bet_area_pos = Some(pos);
-                            }
-                            if i < player_count - 1 {
-                                ui.add_space(2.0);
-                            }
-                        }
-                    });
-                });
             }
 
-            ui.add_space(4.0);
             ui.separator();
             ui.add_space(2.0);
 

@@ -1056,12 +1056,6 @@ pub mod layout {
             _ => max_fit.max(2).min(4),
         }
     }
-
-    /// Calculate card width to fill available space evenly
-    pub fn distributed_width(available_width: f32, count: usize, spacing: f32) -> f32 {
-        let total_spacing = spacing * (count.saturating_sub(1)) as f32;
-        ((available_width - total_spacing) / count as f32).floor()
-    }
 }
 
 // ============================================================================
