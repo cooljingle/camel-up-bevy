@@ -41,7 +41,9 @@ pub fn main_menu_ui(
     // Draw rules UI if open (on top of everything)
     draw_rules_ui(ctx, &mut rules_state, is_mobile, time.delta_secs());
 
-    egui::CentralPanel::default().show(ctx, |ui| {
+    egui::CentralPanel::default()
+        .frame(egui::Frame::NONE)
+        .show(ctx, |ui| {
         // Draw pyramid background behind everything
         let rect = ui.available_rect_before_wrap();
         draw_pyramid_background(ui.painter(), rect, elapsed);
@@ -65,7 +67,12 @@ pub fn main_menu_ui(
                 ui.add_space(if is_mobile { 15.0 } else { 30.0 });
 
                 // Player Setup Section
-                ui.group(|ui| {
+                egui::Frame::new()
+                    .fill(egui::Color32::from_rgba_unmultiplied(0x5A, 0x4D, 0x40, 200)) // STONE_DARK with transparency
+                    .stroke(egui::Stroke::new(2.0, STONE_DARK))
+                    .corner_radius(8.0)
+                    .inner_margin(12.0)
+                    .show(ui, |ui| {
                     // Responsive width
                     if !is_mobile {
                         ui.set_min_width(400.0);
@@ -204,7 +211,14 @@ pub fn main_menu_ui(
                         });
 
                     ui.add_space(10.0);
-                    ui.separator();
+                    // Custom themed separator
+                    let separator_rect = ui.available_rect_before_wrap();
+                    let separator_width = separator_rect.width();
+                    let (sep_rect, _) = ui.allocate_exact_size(egui::vec2(separator_width, 2.0), egui::Sense::hover());
+                    ui.painter().line_segment(
+                        [sep_rect.left_center(), sep_rect.right_center()],
+                        egui::Stroke::new(1.5, egui::Color32::from_rgba_unmultiplied(0x8A, 0x7B, 0x6A, 150)), // STONE with transparency
+                    );
                     ui.add_space(5.0);
 
                     // AI Difficulty selector (only show if there are AI players)
