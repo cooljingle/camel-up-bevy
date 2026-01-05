@@ -1644,7 +1644,6 @@ fn render_mobile_ui(
 
                 let mut current_player_pos = None;
                 frame.show(ui, |ui| {
-                    ui.set_width(card_width - MARGIN * 10.0);
                     ui.horizontal(|ui| {
                         // Avatar
                         let avatar_size = 22.0;
