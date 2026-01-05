@@ -35,7 +35,7 @@ impl Default for AiConfig {
     fn default() -> Self {
         Self {
             difficulty: AiDifficulty::Basic,
-            think_delay: 1.0, // 1 second delay
+            think_delay: 0.5, // 0.5 second delay
         }
     }
 }
