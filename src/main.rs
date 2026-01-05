@@ -17,16 +17,18 @@ use game::ai::{ai_decision_system, AiConfig, AiThinkTimer};
 use game::state::GameState;
 use systems::animation::{
     animate_camera_zoom, animate_movement_system, animate_multi_step_movement_system,
-    animate_pyramid_hover, animate_pyramid_shake, crown_drop_system, dice_result_popup_system,
-    dice_roll_animation_system, explosion_particle_system, fade_out_system, firework_system,
-    particle_system, CameraZoomAnimation,
+    animate_pyramid_hover, animate_pyramid_setup_pulse, animate_pyramid_shake, crown_drop_system,
+    dice_result_popup_system, dice_roll_animation_system, explosion_particle_system,
+    fade_out_system, firework_system, particle_system, CameraZoomAnimation,
 };
 use systems::leg::calculate_final_scores;
 use systems::movement::{
     move_camel_system, move_crazy_camel_system, MoveCamelEvent, MoveCrazyCamelEvent,
     MovementCompleteEvent,
 };
-use systems::setup::{cleanup_game, initial_roll_animation_system, setup_game};
+use systems::setup::{
+    cleanup_game, hide_setup_instructions_system, initial_roll_animation_system, setup_game,
+};
 use systems::turn::{
     advance_turn_system, check_game_end_system, check_leg_end_system, game_end_delay_system,
     handle_leg_bet_action, handle_pyramid_click, handle_pyramid_hover, handle_pyramid_roll_action,
@@ -194,11 +196,16 @@ fn main() {
             Update,
             initial_roll_animation_system.run_if(in_state(GameState::Playing)),
         )
+        .add_systems(
+            Update,
+            hide_setup_instructions_system.run_if(in_state(GameState::Playing)),
+        )
         // Animation systems (run in all states for smooth animations)
         .add_systems(Update, animate_movement_system)
         .add_systems(Update, animate_multi_step_movement_system)
         .add_systems(Update, animate_pyramid_shake)
         .add_systems(Update, animate_pyramid_hover)
+        .add_systems(Update, animate_pyramid_setup_pulse)
         .add_systems(Update, animate_camera_zoom)
         .add_systems(Update, fade_out_system)
         .add_systems(Update, dice_result_popup_system)
