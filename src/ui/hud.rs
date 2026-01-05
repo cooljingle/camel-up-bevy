@@ -1627,6 +1627,7 @@ fn render_mobile_ui(
                                     card_width: f32|
              -> Option<egui::Pos2> {
                 const MARGIN: f32 = 2.0;
+                ui.add_space(MARGIN);
                 let is_current = i == players.current_player_index;
                 let player_color = PLAYER_COLORS[player.color_index % PLAYER_COLORS.len()];
 
@@ -1699,6 +1700,7 @@ fn render_mobile_ui(
                         }
                     });
                 });
+                ui.add_space(MARGIN);
                 current_player_pos
             };
 
