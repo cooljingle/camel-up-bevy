@@ -1065,7 +1065,6 @@ pub struct UiState {
     pub leg_bet_card_positions: [Option<egui::Pos2>; 5], // Screen positions of leg bet card stacks (indexed by CamelColor)
     pub player_bet_area_pos: Option<egui::Pos2>, // Screen position where player's bets are displayed
     pub show_debug_overlay: bool,                // Show debug overlay with window dimensions
-    pub standings_panel_bottom: f32, // Y position of bottom of standings panel (for toast positioning)
 }
 
 /// Animated position entry for the camel positions panel
@@ -1114,7 +1113,6 @@ impl Default for UiState {
             leg_bet_card_positions: [None; 5],
             player_bet_area_pos: None,
             show_debug_overlay: false,
-            standings_panel_bottom: 0.0,
         }
     }
 }

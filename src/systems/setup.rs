@@ -1,4 +1,5 @@
 use crate::components::*;
+use crate::game::state::GameState;
 use crate::systems::turn::{PlayerLegBetsStore, PlayerPyramidTokens, TurnState};
 use crate::ui::player_setup::PlayerSetupConfig;
 use bevy::color::Srgba;
@@ -42,7 +43,7 @@ fn spawn_board_space(commands: &mut Commands, pos: Vec2, index: u8) {
 
     // Shadow layer (offset down-right, darker)
     commands.spawn((
-        GameEntity,
+        DespawnOnExit(GameState::Playing),
         Sprite {
             color: Color::srgba(0.3, 0.25, 0.15, 0.5),
             custom_size: Some(space_size),
@@ -53,7 +54,7 @@ fn spawn_board_space(commands: &mut Commands, pos: Vec2, index: u8) {
 
     // Border layer (slightly larger, dark brown)
     commands.spawn((
-        GameEntity,
+        DespawnOnExit(GameState::Playing),
         Sprite {
             color: Color::srgb(0.4, 0.3, 0.2),
             custom_size: Some(space_size + Vec2::new(4.0, 4.0)),
@@ -64,7 +65,7 @@ fn spawn_board_space(commands: &mut Commands, pos: Vec2, index: u8) {
 
     // Main space (sand color)
     commands.spawn((
-        GameEntity,
+        DespawnOnExit(GameState::Playing),
         BoardSpace { index },
         Sprite {
             color: Color::srgb(0.85, 0.75, 0.55),
@@ -76,7 +77,7 @@ fn spawn_board_space(commands: &mut Commands, pos: Vec2, index: u8) {
 
     // Inner highlight (top portion, subtle)
     commands.spawn((
-        GameEntity,
+        DespawnOnExit(GameState::Playing),
         Sprite {
             color: Color::srgba(1.0, 0.95, 0.85, 0.3),
             custom_size: Some(Vec2::new(space_size.x - 8.0, space_size.y * 0.4)),
@@ -87,7 +88,7 @@ fn spawn_board_space(commands: &mut Commands, pos: Vec2, index: u8) {
 
     // Space number label (below the space)
     commands.spawn((
-        GameEntity,
+        DespawnOnExit(GameState::Playing),
         Text2d::new(format!("{}", index + 1)),
         TextFont {
             font_size: 16.0,
@@ -101,7 +102,7 @@ fn spawn_board_space(commands: &mut Commands, pos: Vec2, index: u8) {
     let tile_size = Vec2::new(35.0, 18.0);
     commands
         .spawn((
-            GameEntity,
+            DespawnOnExit(GameState::Playing),
             crate::components::board::SpectatorTileSprite { space_index: index },
             Sprite {
                 color: Color::srgba(0.0, 0.0, 0.0, 0.0), // Start invisible
@@ -146,7 +147,7 @@ fn spawn_finish_line(commands: &mut Commands, pos: Vec2) {
             let is_white = (row + col) % 2 == 0;
             let color = if is_white { Color::WHITE } else { Color::BLACK };
             commands.spawn((
-                GameEntity,
+                DespawnOnExit(GameState::Playing),
                 Sprite {
                     color,
                     custom_size: Some(Vec2::splat(checker_size)),
@@ -167,7 +168,7 @@ fn spawn_finish_line(commands: &mut Commands, pos: Vec2) {
     let pole_y = pos.y;
 
     commands.spawn((
-        GameEntity,
+        DespawnOnExit(GameState::Playing),
         Sprite {
             color: Color::srgb(0.4, 0.3, 0.2), // Brown pole
             custom_size: Some(Vec2::new(4.0, pole_height)),
@@ -178,7 +179,7 @@ fn spawn_finish_line(commands: &mut Commands, pos: Vec2) {
 
     // Add a small ball on top of the pole
     commands.spawn((
-        GameEntity,
+        DespawnOnExit(GameState::Playing),
         Sprite {
             color: Color::srgb(0.8, 0.7, 0.2), // Gold ball
             custom_size: Some(Vec2::splat(8.0)),
@@ -420,7 +421,7 @@ fn spawn_racing_camel(
 
     // Parent entity with game logic components
     let mut entity_commands = commands.spawn((
-        GameEntity,
+        DespawnOnExit(GameState::Playing),
         Camel { color },
         BoardPosition {
             space_index,
@@ -456,7 +457,7 @@ fn spawn_crazy_camel(
     // Parent entity with game logic components
     // Crazy camels face right (same as racing camels) but move backwards on the track
     let mut entity_commands = commands.spawn((
-        GameEntity,
+        DespawnOnExit(GameState::Playing),
         CrazyCamel { color },
         BoardPosition {
             space_index,
@@ -499,7 +500,7 @@ fn spawn_dice_tent(commands: &mut Commands, position: Vec3, tent_index: usize) {
     // Parent tent entity
     commands
         .spawn((
-            GameEntity,
+            DespawnOnExit(GameState::Playing),
             DiceTent { index: tent_index },
             Transform::from_translation(position),
             Visibility::default(),
@@ -696,7 +697,7 @@ fn spawn_pyramid_button(
     // Parent pyramid entity with clickable marker
     commands
         .spawn((
-            GameEntity,
+            DespawnOnExit(GameState::Playing),
             PyramidRollButton,
             Transform::from_translation(position),
             Visibility::default(),
@@ -878,10 +879,6 @@ fn spawn_gold_coin(
         Transform::from_translation(position + Vec3::new(0.0, 0.0, 0.2)),
     ));
 }
-
-/// Marker component for all game entities that should be cleaned up when leaving Playing state
-#[derive(Component)]
-pub struct GameEntity;
 
 /// Identifies which type of camel is being rolled for initial setup
 #[derive(Clone, Copy)]
@@ -1155,10 +1152,10 @@ pub fn setup_game(
     info!("Game setup complete!");
 }
 
-/// Clean up all game entities when leaving the Playing state
+/// Clean up game resources when leaving the Playing state.
+/// Note: Game entities are automatically despawned by DespawnOnExit(GameState::Playing).
 pub fn cleanup_game(
     mut commands: Commands,
-    game_entities: Query<Entity, With<GameEntity>>,
     mut ui_state: ResMut<crate::ui::hud::UiState>,
     mut celebration_state: ResMut<crate::ui::scoring::CelebrationState>,
     mut camera_state: ResMut<crate::CameraState>,
@@ -1166,10 +1163,6 @@ pub fn cleanup_game(
     mut rules_state: ResMut<crate::ui::rules::RulesState>,
     mut ai_think_timer: ResMut<crate::game::ai::AiThinkTimer>,
 ) {
-    for entity in game_entities.iter() {
-        commands.entity(entity).despawn();
-    }
-
     // Reset all UI and game state
     *ui_state = crate::ui::hud::UiState::default();
     *celebration_state = crate::ui::scoring::CelebrationState::default();
