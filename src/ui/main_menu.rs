@@ -1,3 +1,4 @@
+use crate::components::camel::{CamelColor, CrazyCamelColor};
 use crate::game::ai::{AiConfig, AiDifficulty};
 use crate::game::state::GameState;
 use crate::ui::characters::{draw_avatar, CharacterId};
@@ -10,6 +11,7 @@ use crate::ui::theme::{
 };
 use bevy::prelude::*;
 use bevy_egui::{egui, EguiContexts};
+use rand::seq::SliceRandom;
 use std::collections::HashSet;
 
 // Colors for the pyramid background
@@ -20,10 +22,31 @@ const PYRAMID_DARK: egui::Color32 = egui::Color32::from_rgb(0xA0, 0x7A, 0x30);
 const PYRAMID_OUTLINE: egui::Color32 = egui::Color32::from_rgb(0x6B, 0x4A, 0x1A);
 const SUN_COLOR: egui::Color32 = egui::Color32::from_rgb(0xFF, 0xD7, 0x00);
 
-// Colors for walking camels - sandy colored with 4-layer style like in-game camels
-const CAMEL_MAIN: egui::Color32 = egui::Color32::from_rgb(0xC4, 0xA0, 0x6A); // Sandy tan
-const CAMEL_BORDER: egui::Color32 = egui::Color32::from_rgb(0x8A, 0x6A, 0x3A); // Darker border
-const CAMEL_HIGHLIGHT: egui::Color32 = egui::Color32::from_rgb(0xE0, 0xC8, 0x9A); // Lighter highlight
+/// Convert Bevy Color to egui Color32
+fn bevy_to_egui_color(color: Color) -> egui::Color32 {
+    let [r, g, b, a] = color.to_srgba().to_u8_array();
+    egui::Color32::from_rgba_unmultiplied(r, g, b, a)
+}
+
+/// Enum to represent either a regular camel or a crazy camel
+#[derive(Debug, Clone, Copy)]
+enum AnyCamel {
+    Regular(CamelColor),
+    Crazy(CrazyCamelColor),
+}
+
+impl AnyCamel {
+    fn to_egui_color(&self) -> egui::Color32 {
+        match self {
+            AnyCamel::Regular(color) => bevy_to_egui_color(color.to_bevy_color()),
+            AnyCamel::Crazy(color) => bevy_to_egui_color(color.to_bevy_color()),
+        }
+    }
+
+    fn is_crazy(&self) -> bool {
+        matches!(self, AnyCamel::Crazy(_))
+    }
+}
 
 pub fn main_menu_ui(
     mut contexts: EguiContexts,
@@ -326,6 +349,8 @@ pub fn main_menu_ui(
 /// scale: size multiplier (1.0 = normal size)
 /// time: elapsed time for leg animation
 /// phase_offset: offset for walking cycle (different camels walk at different phases)
+/// color: the camel's main color
+/// direction: 1.0 for left-to-right, -1.0 for right-to-left
 fn draw_walking_camel(
     painter: &egui::Painter,
     x: f32,
@@ -334,6 +359,8 @@ fn draw_walking_camel(
     time: f32,
     phase_offset: f32,
     alpha: u8,
+    color: egui::Color32,
+    direction: f32,
 ) {
     // Camel dimensions (scaled)
     let body_w = 32.0 * scale;
@@ -362,22 +389,28 @@ fn draw_walking_camel(
     // Colors with alpha for distance fading
     let shadow_color =
         egui::Color32::from_rgba_unmultiplied(0, 0, 0, (40.0 * alpha as f32 / 255.0) as u8);
+
+    // Darken the main color for the border (multiply by 0.6)
     let border_color = egui::Color32::from_rgba_unmultiplied(
-        CAMEL_BORDER.r(),
-        CAMEL_BORDER.g(),
-        CAMEL_BORDER.b(),
+        ((color.r() as f32 * 0.6) as u8),
+        ((color.g() as f32 * 0.6) as u8),
+        ((color.b() as f32 * 0.6) as u8),
         alpha,
     );
+
+    // Main color with alpha
     let main_color = egui::Color32::from_rgba_unmultiplied(
-        CAMEL_MAIN.r(),
-        CAMEL_MAIN.g(),
-        CAMEL_MAIN.b(),
+        color.r(),
+        color.g(),
+        color.b(),
         alpha,
     );
+
+    // Lighten the main color for highlights (blend with white)
     let highlight_color = egui::Color32::from_rgba_unmultiplied(
-        CAMEL_HIGHLIGHT.r(),
-        CAMEL_HIGHLIGHT.g(),
-        CAMEL_HIGHLIGHT.b(),
+        ((color.r() as f32 * 0.6 + 255.0 * 0.4) as u8),
+        ((color.g() as f32 * 0.6 + 255.0 * 0.4) as u8),
+        ((color.b() as f32 * 0.6 + 255.0 * 0.4) as u8),
         alpha,
     );
 
@@ -433,18 +466,19 @@ fn draw_walking_camel(
 
     // Draw legs first (behind body) with walking animation
     let leg_base_y = y + body_h / 2.0 + leg_h / 2.0;
-    let leg_x_positions = [
-        x - body_w / 2.0 + 5.0 * scale,  // Back left
-        x - body_w / 2.0 + 10.0 * scale, // Back right
-        x + body_w / 2.0 - 10.0 * scale, // Front left
-        x + body_w / 2.0 - 5.0 * scale,  // Front right
+    let leg_x_offsets = [
+        -body_w / 2.0 + 5.0 * scale,  // Back left
+        -body_w / 2.0 + 10.0 * scale, // Back right
+        body_w / 2.0 - 10.0 * scale,  // Front left
+        body_w / 2.0 - 5.0 * scale,   // Front right
     ];
 
-    for (i, &leg_x) in leg_x_positions.iter().enumerate() {
+    for (i, &x_offset) in leg_x_offsets.iter().enumerate() {
         let leg_offset =
             ((time * walk_speed + phase_offset + leg_phases[i]).sin() * leg_amplitude).abs();
         let current_leg_h = leg_h - leg_offset;
         let leg_cy = leg_base_y - leg_offset / 2.0;
+        let leg_x = x + x_offset * direction;
         draw_layered_rect(
             painter,
             leg_x,
@@ -460,12 +494,12 @@ fn draw_walking_camel(
     draw_layered_rect(painter, x, y, body_w, body_h, 2.0 * scale, true);
 
     // Draw hump (with highlight)
-    let hump_cx = x - 2.0 * scale;
+    let hump_cx = x + (-2.0 * scale) * direction;
     let hump_cy = y - body_h / 2.0 - hump_h / 2.0 + 2.0 * scale;
     draw_layered_rect(painter, hump_cx, hump_cy, hump_w, hump_h, 4.0 * scale, true);
 
     // Draw neck
-    let neck_cx = x + body_w / 2.0 - 2.0 * scale;
+    let neck_cx = x + (body_w / 2.0 - 2.0 * scale) * direction;
     let neck_cy = y - body_h / 2.0 - neck_h / 2.0 + 3.0 * scale;
     draw_layered_rect(
         painter,
@@ -478,7 +512,7 @@ fn draw_walking_camel(
     );
 
     // Draw head (with highlight)
-    let head_cx = x + body_w / 2.0 + 2.0 * scale;
+    let head_cx = x + (body_w / 2.0 + 2.0 * scale) * direction;
     let head_cy = y - body_h / 2.0 - neck_h + 2.0 * scale;
     draw_layered_rect(painter, head_cx, head_cy, head_w, head_h, 2.0 * scale, true);
 }
@@ -587,24 +621,77 @@ fn draw_pyramid_background(painter: &egui::Painter, rect: egui::Rect, time: f32)
     let screen_width = rect.width();
     let camel_speed = 25.0; // pixels per second
 
-    // Camel caravan - 3 camels at different positions and sizes
-    let camels = [
-        // (phase_offset, scale, y_offset from horizon, speed_mult)
-        (0.0, 0.8, 20.0, 1.0),  // Closer, larger
-        (2.0, 0.5, 8.0, 0.8),   // Farther, smaller (near horizon)
-        (4.5, 0.65, 14.0, 0.9), // Middle distance
+    // Create list of all possible camels (5 regular + 1 crazy)
+    let mut all_camels = vec![
+        AnyCamel::Regular(CamelColor::Blue),
+        AnyCamel::Regular(CamelColor::Green),
+        AnyCamel::Regular(CamelColor::Red),
+        AnyCamel::Regular(CamelColor::Yellow),
+        AnyCamel::Regular(CamelColor::Purple),
     ];
 
-    for (phase, scale, y_off, speed_mult) in camels {
+    // Use a deterministic seed based on time (changes every 60 seconds)
+    // This gives us a stable selection that occasionally changes
+    use rand::{Rng, SeedableRng};
+    let seed = (time / 60.0) as u64;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+
+    // Randomly select which crazy camel to use (Black or White)
+    let crazy_color = if rng.gen_bool(0.5) {
+        CrazyCamelColor::Black
+    } else {
+        CrazyCamelColor::White
+    };
+    all_camels.push(AnyCamel::Crazy(crazy_color));
+
+    // Randomly select 5 out of 6 camels (shuffle and take first 5)
+    all_camels.shuffle(&mut rng);
+    let selected_camels: Vec<AnyCamel> = all_camels.into_iter().take(5).collect();
+
+    // Camel caravan - 5 camels at different positions and sizes
+    let camel_configs = [
+        // (phase_offset, scale, y_offset from horizon, speed_mult)
+        (0.0, 0.8, 20.0, 1.0),   // Closer, larger
+        (2.0, 0.5, 8.0, 0.8),    // Farther, smaller (near horizon)
+        (4.5, 0.65, 14.0, 0.9),  // Middle distance
+        (6.0, 0.7, 16.0, 0.95),  // Another middle distance
+        (8.5, 0.55, 10.0, 0.85), // Another far distance
+    ];
+
+    for (i, (phase, scale, y_off, speed_mult)) in camel_configs.iter().enumerate() {
+        let camel = selected_camels[i];
+        let camel_color = camel.to_egui_color();
+        let is_crazy = camel.is_crazy();
+
+        // Crazy camels go right to left, regular camels go left to right
+        let direction = if is_crazy { -1.0 } else { 1.0 };
+
         // Calculate x position - wraps around screen
         let travel_distance = screen_width + 100.0 * scale;
-        let x_offset = (time * camel_speed * speed_mult + phase * 100.0) % travel_distance;
+        let x_offset = if is_crazy {
+            // Crazy camel moves right to left
+            travel_distance - ((time * camel_speed * speed_mult + phase * 100.0) % travel_distance)
+        } else {
+            // Regular camel moves left to right
+            (time * camel_speed * speed_mult + phase * 100.0) % travel_distance
+        };
+
         let camel_x = rect.left() - 50.0 * scale + x_offset;
         let camel_y = horizon_y + y_off;
 
         // Use alpha for distance fading (smaller scale = farther away = more faded)
         let alpha = ((200.0 * scale) as u8).max(100);
 
-        draw_walking_camel(painter, camel_x, camel_y, scale, time, phase, alpha);
+        draw_walking_camel(
+            painter,
+            camel_x,
+            camel_y,
+            *scale,
+            time,
+            *phase,
+            alpha,
+            camel_color,
+            direction,
+        );
     }
 }
