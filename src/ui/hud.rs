@@ -1373,19 +1373,8 @@ pub fn game_hud_ui(
                 if !is_iphone() {
                     if let Ok(window) = windows.single() {
                         let is_fullscreen = window.mode != WindowMode::Windowed;
-                        let btn_text = {
-                            if !ui_state.use_side_panels {
-                                "⛶"
-                            } else {
-                                "Fullscreen"
-                            }
-                        };
-                        if desert_button(ui, btn_text, &small_style).clicked() {
-                            if is_fullscreen {
-                                ui_state.exit_fullscreen_requested = true;
-                            } else {
-                                ui_state.enter_fullscreen_requested = true;
-                            }
+                        if desert_button(ui, "⛶", &compact_style).clicked() {
+                            ui_state.exit_fullscreen_requested = is_fullscreen;
                         }
                     }
                 }
