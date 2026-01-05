@@ -1209,7 +1209,7 @@ pub fn game_hud_ui(
     }
 
     // Shared current player color (used in multiple places)
-    let current_player_color = PLAYER_COLORS[players.current_player_index % PLAYER_COLORS.len()];
+    let current_player_color = PLAYER_COLORS[players.current_player().color_index % PLAYER_COLORS.len()];
 
     // Top bar - Game info (responsive based on layout mode)
     egui::TopBottomPanel::top("game_info").show(ctx, |ui| {
@@ -1626,7 +1626,7 @@ fn render_mobile_ui(
                                     card_width: f32|
              -> Option<egui::Pos2> {
                 let is_current = i == players.current_player_index;
-                let player_color = PLAYER_COLORS[i % PLAYER_COLORS.len()];
+                let player_color = PLAYER_COLORS[player.color_index % PLAYER_COLORS.len()];
 
                 let bg_color = if is_current {
                     egui::Color32::from_rgb(40, 60, 40)
@@ -2638,7 +2638,7 @@ fn render_desktop_ui(
 
                 for (i, player) in players.players.iter().enumerate() {
                     let is_current = i == players.current_player_index;
-                    let player_color = PLAYER_COLORS[i % PLAYER_COLORS.len()];
+                    let player_color = PLAYER_COLORS[player.color_index % PLAYER_COLORS.len()];
 
                     // Player header with frame for current player
                     let frame = if is_current {
@@ -2927,8 +2927,7 @@ fn render_popup_windows(
             .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
             .show(ctx, |ui| {
                 let current = players.current_player();
-                let current_player_index = players.current_player_index;
-                let player_color = PLAYER_COLORS[current_player_index % PLAYER_COLORS.len()];
+                let player_color = PLAYER_COLORS[current.color_index % PLAYER_COLORS.len()];
                 let character_id = current.character_id;
 
                 ui.horizontal(|ui| {
@@ -3035,8 +3034,7 @@ fn render_popup_windows(
             .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
             .show(ctx, |ui| {
                 let current = players.current_player();
-                let current_player_index = players.current_player_index;
-                let player_color = PLAYER_COLORS[current_player_index % PLAYER_COLORS.len()];
+                let player_color = PLAYER_COLORS[current.color_index % PLAYER_COLORS.len()];
                 let character_id = current.character_id;
 
                 ui.horizontal(|ui| {

@@ -47,6 +47,9 @@ pub struct PlayerConfig {
     pub name: String,
     pub is_ai: bool,
     pub character_id: CharacterId,
+    pub color_index: usize,
+    /// Tracks if the user manually edited the name (prevents auto-name updates)
+    pub name_edited: bool,
 }
 
 impl Default for PlayerConfig {
@@ -55,6 +58,8 @@ impl Default for PlayerConfig {
             name: String::new(),
             is_ai: false,
             character_id: CharacterId::default(),
+            color_index: 0,
+            name_edited: false,
         }
     }
 }
@@ -75,6 +80,10 @@ impl Default for PlayerSetupConfig {
             .collect();
         character_ids.shuffle(&mut rng);
 
+        // Shuffle color indices so each game starts with random colors
+        let mut color_indices: Vec<usize> = (0..8).collect();
+        color_indices.shuffle(&mut rng);
+
         // Start with 1 human + 3 AI players by default
         // AI players get random thematic names based on their character
         Self {
@@ -82,22 +91,30 @@ impl Default for PlayerSetupConfig {
                 PlayerConfig {
                     name: "Player 1".to_string(),
                     is_ai: false,
-                    character_id: character_ids[0]
+                    character_id: character_ids[0],
+                    color_index: color_indices[0],
+                    name_edited: false,
                 },
                 PlayerConfig {
                     name: character_ids[1].random_name(),
                     is_ai: true,
-                    character_id: character_ids[1]
+                    character_id: character_ids[1],
+                    color_index: color_indices[1],
+                    name_edited: false,
                 },
                 PlayerConfig {
                     name: character_ids[2].random_name(),
                     is_ai: true,
-                    character_id: character_ids[2]
+                    character_id: character_ids[2],
+                    color_index: color_indices[2],
+                    name_edited: false,
                 },
                 PlayerConfig {
                     name: character_ids[3].random_name(),
                     is_ai: true,
-                    character_id: character_ids[3]
+                    character_id: character_ids[3],
+                    color_index: color_indices[3],
+                    name_edited: false,
                 },
             ],
             randomize_start_order: false,
@@ -111,7 +128,6 @@ impl PlayerSetupConfig {
 
     pub fn add_player(&mut self) {
         if self.players.len() < Self::MAX_PLAYERS {
-            let num = self.players.len() + 1;
             // Find an unused character
             let used: HashSet<CharacterId> = self.players.iter().map(|p| p.character_id).collect();
             let available = (0..8)
@@ -119,10 +135,19 @@ impl PlayerSetupConfig {
                 .find(|c| !used.contains(c))
                 .unwrap_or(CharacterId::default());
 
+            // Find an unused color index
+            let used_colors: HashSet<usize> = self.players.iter().map(|p| p.color_index).collect();
+            let available_color = (0..8)
+                .find(|c| !used_colors.contains(c))
+                .unwrap_or(0);
+
+            // New players default to AI with avatar-based name
             self.players.push(PlayerConfig {
-                name: format!("Player {}", num),
+                name: available.random_name(),
                 is_ai: true,
                 character_id: available,
+                color_index: available_color,
+                name_edited: false,
             });
         }
     }
@@ -133,12 +158,32 @@ impl PlayerSetupConfig {
         }
     }
 
+    /// Update name when toggling between Human and AI (if name wasn't manually edited)
+    pub fn set_player_is_ai(&mut self, player_index: usize, is_ai: bool) {
+        if player_index >= self.players.len() {
+            return;
+        }
+        let player = &mut self.players[player_index];
+        if player.is_ai == is_ai {
+            return; // No change
+        }
+        player.is_ai = is_ai;
+        // Only update name if it wasn't manually edited
+        if !player.name_edited {
+            if is_ai {
+                player.name = player.character_id.random_name();
+            } else {
+                player.name = format!("Player {}", player_index + 1);
+            }
+        }
+    }
+
     /// Convert to the format expected by Players::new()
     /// If randomize_start_order is true, shuffles the player order
-    pub fn to_player_configs(&self) -> Vec<(String, bool, CharacterId)> {
-        let mut configs: Vec<(String, bool, CharacterId)> = self.players
+    pub fn to_player_configs(&self) -> Vec<(String, bool, CharacterId, usize)> {
+        let mut configs: Vec<(String, bool, CharacterId, usize)> = self.players
             .iter()
-            .map(|p| (p.name.clone(), p.is_ai, p.character_id))
+            .map(|p| (p.name.clone(), p.is_ai, p.character_id, p.color_index))
             .collect();
 
         if self.randomize_start_order {

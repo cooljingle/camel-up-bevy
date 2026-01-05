@@ -509,8 +509,8 @@ fn draw_standings_pre_bets_phase(
                         ui.add_space(30.0);
 
                         // Draw standings with avatars
-                        for (rank, (player_idx, player)) in sorted_players.iter().enumerate() {
-                            let player_color = PLAYER_COLORS[*player_idx % PLAYER_COLORS.len()];
+                        for (rank, (_player_idx, player)) in sorted_players.iter().enumerate() {
+                            let player_color = PLAYER_COLORS[player.color_index % PLAYER_COLORS.len()];
                             let rank_text = match rank {
                                 0 => "1st",
                                 1 => "2nd",
@@ -683,8 +683,8 @@ fn draw_winner_bets_reveal_phase(
                         let max_money = actual_max.max(50).max(1);
                         let bar_max_width = 150.0;
 
-                        for (rank, (player_idx, player)) in sorted_players.iter().enumerate() {
-                            let player_color = PLAYER_COLORS[*player_idx % PLAYER_COLORS.len()];
+                        for (rank, (_player_idx, player)) in sorted_players.iter().enumerate() {
+                            let player_color = PLAYER_COLORS[player.color_index % PLAYER_COLORS.len()];
                             ui.horizontal(|ui| {
                                 let rank_text = format!("{}.", rank + 1);
                                 ui.label(egui::RichText::new(&rank_text).size(14.0).monospace());
@@ -886,8 +886,8 @@ fn draw_loser_bets_reveal_phase(
                         let max_money = actual_max.max(50).max(1);
                         let bar_max_width = 150.0;
 
-                        for (rank, (player_idx, player)) in sorted_players.iter().enumerate() {
-                            let player_color = PLAYER_COLORS[*player_idx % PLAYER_COLORS.len()];
+                        for (rank, (_player_idx, player)) in sorted_players.iter().enumerate() {
+                            let player_color = PLAYER_COLORS[player.color_index % PLAYER_COLORS.len()];
                             ui.horizontal(|ui| {
                                 let rank_text = format!("{}.", rank + 1);
                                 ui.label(egui::RichText::new(&rank_text).size(14.0).monospace());
@@ -1007,8 +1007,8 @@ fn draw_final_results_mobile_panels(
             ui.add_space(6.0);
 
             // Player rankings (compact horizontal layout for mobile)
-            for (rank, (player_idx, player)) in sorted_players.iter().enumerate() {
-                let player_color = PLAYER_COLORS[*player_idx % PLAYER_COLORS.len()];
+            for (rank, (_player_idx, player)) in sorted_players.iter().enumerate() {
+                let player_color = PLAYER_COLORS[player.color_index % PLAYER_COLORS.len()];
                 let is_winner = rank == 0;
 
                 let rank_text = match rank {
@@ -1069,8 +1069,8 @@ fn draw_final_results_mobile_panels(
         .show_animated(ctx, progress > 0.01, |ui| {
             ui.vertical_centered(|ui| {
                 // Winner announcement
-                if let Some((winner_idx, winner)) = winner {
-                    let winner_color = PLAYER_COLORS[winner_idx % PLAYER_COLORS.len()];
+                if let Some((_winner_idx, winner)) = winner {
+                    let winner_color = PLAYER_COLORS[winner.color_index % PLAYER_COLORS.len()];
 
                     ui.horizontal(|ui| {
                         // Winner avatar
@@ -1165,8 +1165,8 @@ fn draw_final_results_phase(
                         ui.add_space(if is_mobile { 12.0 } else { 20.0 });
 
                         // Final standings with avatars
-                        for (rank, (player_idx, player)) in sorted_players.iter().enumerate() {
-                            let player_color = PLAYER_COLORS[*player_idx % PLAYER_COLORS.len()];
+                        for (rank, (_player_idx, player)) in sorted_players.iter().enumerate() {
+                            let player_color = PLAYER_COLORS[player.color_index % PLAYER_COLORS.len()];
                             let is_winner = rank == 0;
 
                             let rank_text = match rank {
@@ -1220,8 +1220,7 @@ fn draw_final_results_phase(
 
                         // Winner announcement at bottom
                         if let Some(winner) = winner {
-                            let winner_idx = players.players.iter().position(|p| p.id == winner.id).unwrap_or(0);
-                            let winner_color = PLAYER_COLORS[winner_idx % PLAYER_COLORS.len()];
+                            let winner_color = PLAYER_COLORS[winner.color_index % PLAYER_COLORS.len()];
 
                             ui.horizontal(|ui| {
                                 // Winner avatar - with happy expression!

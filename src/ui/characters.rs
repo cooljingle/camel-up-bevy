@@ -28,12 +28,7 @@ fn lighten(color: Color32, factor: f32) -> Color32 {
 
 /// Draw a rectangle with 4 layers: shadow, border, main, highlight
 /// This matches the visual style of the camel sprites
-fn draw_layered_rect(
-    painter: &egui::Painter,
-    rect: Rect,
-    rounding: f32,
-    base_color: Color32,
-) {
+fn draw_layered_rect(painter: &egui::Painter, rect: Rect, rounding: f32, base_color: Color32) {
     let shadow_offset = rect.width() * 0.05;
     let border_inset = rect.width() * 0.03;
     let highlight_inset = rect.width() * 0.1;
@@ -103,10 +98,8 @@ fn draw_rect_eyes(painter: &egui::Painter, center: Pos2, radius: f32, iris_color
         let eye_x = center.x + eye_offset * x_mult;
 
         // Eye white - horizontal rounded rectangle
-        let eye_rect = Rect::from_center_size(
-            Pos2::new(eye_x, eye_y),
-            egui::vec2(eye_width, eye_height),
-        );
+        let eye_rect =
+            Rect::from_center_size(Pos2::new(eye_x, eye_y), egui::vec2(eye_width, eye_height));
         painter.rect_filled(eye_rect, rounding, Color32::WHITE);
 
         // Iris - smaller rounded rectangle
@@ -171,14 +164,37 @@ impl CharacterId {
     /// Get a list of thematic names for this character type
     pub fn thematic_names(&self) -> &'static [&'static str] {
         match self {
-            Self::DesertExplorer => &["Sandy", "Indy", "Rex", "Dusty", "Marco", "Sahara", "Dunes", "Compass"],
-            Self::Merchant => &["Hakim", "Jabari", "Omar", "Rashid", "Tariq", "Bazaar", "Silk", "Spice"],
-            Self::Princess => &["Nefertiti", "Cleo", "Isis", "Amira", "Jasmine", "Lotus", "Pearl", "Sapphire"],
-            Self::Jockey => &["Flash", "Speedy", "Blaze", "Dash", "Swift", "Bolt", "Thunder", "Rocket"],
-            Self::Pharaoh => &["Ramses", "Tut", "Khufu", "Osiris", "Ra", "Anubis", "Horus", "Sphinx"],
-            Self::Nomad => &["Bedouin", "Sahir", "Zephyr", "Dune", "Sirocco", "Mirage", "Wanderer", "Breeze"],
-            Self::Scholar => &["Thoth", "Scribe", "Ptolemy", "Archie", "Sage", "Newton", "Wisdom", "Scroll"],
-            Self::FortuneTeller => &["Oracle", "Sybil", "Cass", "Pythia", "Esme", "Zara", "Mystic", "Tarot"],
+            Self::DesertExplorer => &[
+                "Sandy", "Indy", "Rex", "Dusty", "Marco", "Sahara", "Dunes", "Compass",
+            ],
+            Self::Merchant => &[
+                "Hakim", "Jabari", "Omar", "Rashid", "Tariq", "Bazaar", "Silk", "Spice",
+            ],
+            Self::Princess => &[
+                "Nefertiti",
+                "Cleo",
+                "Isis",
+                "Amira",
+                "Jasmine",
+                "Lotus",
+                "Pearl",
+                "Sapphire",
+            ],
+            Self::Jockey => &[
+                "Flash", "Speedy", "Blaze", "Dash", "Swift", "Bolt", "Thunder", "Rocket",
+            ],
+            Self::Pharaoh => &[
+                "Ramses", "Tut", "Khufu", "Osiris", "Ra", "Anubis", "Horus", "Sphinx",
+            ],
+            Self::Nomad => &[
+                "Bedouin", "Sahir", "Zephyr", "Dune", "Sirocco", "Mirage", "Wanderer", "Breeze",
+            ],
+            Self::Scholar => &[
+                "Thoth", "Scribe", "Ptolemy", "Archie", "Sage", "Newton", "Wisdom", "Scroll",
+            ],
+            Self::FortuneTeller => &[
+                "Oracle", "Sybil", "Cass", "Pythia", "Esme", "Zara", "Mystic", "Tarot",
+            ],
         }
     }
 
@@ -198,22 +214,31 @@ const SKIN_MEDIUM: Color32 = Color32::from_rgb(180, 140, 100);
 const SKIN_DARK: Color32 = Color32::from_rgb(140, 100, 70);
 
 /// Draw a character avatar in the given rect
-pub fn draw_avatar(painter: &egui::Painter, rect: Rect, character: CharacterId, border_color: Option<Color32>) {
+pub fn draw_avatar(
+    painter: &egui::Painter,
+    rect: Rect,
+    character: CharacterId,
+    border_color: Option<Color32>,
+) {
     draw_avatar_with_expression(painter, rect, character, border_color, false)
 }
 
 /// Draw a character avatar with optional happy expression (for winners)
-pub fn draw_avatar_with_expression(painter: &egui::Painter, rect: Rect, character: CharacterId, border_color: Option<Color32>, happy: bool) {
+pub fn draw_avatar_with_expression(
+    painter: &egui::Painter,
+    rect: Rect,
+    character: CharacterId,
+    border_color: Option<Color32>,
+    happy: bool,
+) {
     let center = rect.center();
     let size = rect.width().min(rect.height());
     let radius = size * 0.45;
 
     // Draw border/background if specified (rounded rectangle to match camel style)
     if let Some(border) = border_color {
-        let border_rect = Rect::from_center_size(
-            center,
-            egui::vec2(radius * 2.0 + 6.0, radius * 2.0 + 6.0),
-        );
+        let border_rect =
+            Rect::from_center_size(center, egui::vec2(radius * 2.0 + 6.0, radius * 2.0 + 6.0));
         painter.rect_filled(border_rect, radius * 0.4, border);
     }
 
@@ -265,14 +290,41 @@ fn draw_explorer(painter: &egui::Painter, center: Pos2, radius: f32, happy: bool
     );
     painter.rect_filled(band_rect, radius * 0.02, hat_band);
 
-    // Eyes
-    draw_eyes(painter, center, radius, Color32::from_rgb(80, 60, 40));
+    // Stubble/5 o'clock shadow - darker skin tone area around jaw/chin
+    let stubble_color = Color32::from_rgb(180, 145, 105);
+    let stubble_rect = Rect::from_center_size(
+        Pos2::new(center.x, center.y + radius * 0.5),
+        egui::vec2(radius * 1.1, radius * 0.55),
+    );
+    painter.rect_filled(stubble_rect, radius * 0.2, stubble_color);
 
-    // Smile - big for happy, normal otherwise
+    // Eyebrows (thick, adventurous)
+    let eye_y = center.y + radius * 0.1;
+    let eye_offset = radius * 0.22;
+    let brow_color = Color32::from_rgb(90, 60, 30);
+    // Left eyebrow
+    let left_brow_rect = Rect::from_center_size(
+        Pos2::new(center.x - eye_offset, eye_y - radius * 0.16),
+        egui::vec2(radius * 0.28, radius * 0.08),
+    );
+    painter.rect_filled(left_brow_rect, radius * 0.02, brow_color);
+    // Right eyebrow
+    let right_brow_rect = Rect::from_center_size(
+        Pos2::new(center.x + eye_offset, eye_y - radius * 0.16),
+        egui::vec2(radius * 0.28, radius * 0.08),
+    );
+    painter.rect_filled(right_brow_rect, radius * 0.02, brow_color);
+
+    // Eyes (positioned lower)
+    let eye_center = Pos2::new(center.x, center.y + radius * 0.1);
+    draw_rect_eyes(painter, eye_center, radius, Color32::from_rgb(80, 60, 40));
+
+    // Smile - big for happy, normal otherwise (positioned lower)
+    let smile_center = Pos2::new(center.x, center.y + radius * 0.13);
     if happy {
-        draw_big_smile(painter, center, radius);
+        draw_big_smile(painter, smile_center, radius);
     } else {
-        draw_smile(painter, center, radius);
+        draw_smile(painter, smile_center, radius);
     }
 }
 
@@ -312,7 +364,7 @@ fn draw_merchant(painter: &egui::Painter, center: Pos2, radius: f32, happy: bool
     painter.rect_filled(gem_rect, radius * 0.05, Color32::from_rgb(50, 200, 100));
 
     // Eyes (slightly narrowed, shrewd) - rectangular style
-    let eye_y = center.y - radius * 0.05;
+    let eye_y = center.y + radius * 0.08;
     let eye_offset = radius * 0.25;
     for &x_mult in &[-1.0, 1.0] {
         let eye_x = center.x + eye_offset * x_mult;
@@ -330,10 +382,11 @@ fn draw_merchant(painter: &egui::Painter, center: Pos2, radius: f32, happy: bool
     }
 
     // Smile
+    let smile_center = Pos2::new(center.x, center.y + radius * 0.10);
     if happy {
-        draw_big_smile(painter, center, radius);
+        draw_big_smile(painter, smile_center, radius);
     } else {
-        draw_smile(painter, center, radius);
+        draw_smile(painter, smile_center, radius);
     }
 }
 
@@ -343,12 +396,30 @@ fn draw_princess(painter: &egui::Painter, center: Pos2, radius: f32, happy: bool
     let hair_color = Color32::from_rgb(60, 30, 10); // Dark brown
     let tiara_color = Color32::from_rgb(255, 215, 0); // Gold
 
-    // Hair background - rounded rectangle
-    let hair_rect = Rect::from_center_size(
-        center,
-        egui::vec2(radius * 1.9, radius * 1.9),
+    // Hair cap - covers top and sides of head
+    let hair_cap_rect = Rect::from_center_size(
+        Pos2::new(center.x, center.y - radius * 0.3),
+        egui::vec2(radius * 1.9, radius * 1.3),
     );
-    draw_simple_layered_rect(painter, hair_rect, radius * 0.4, hair_color);
+    draw_simple_layered_rect(painter, hair_cap_rect, radius * 0.4, hair_color);
+
+    // Flowing hair strands on left side (wider to frame larger face)
+    for (x_offset, width_mult) in [(-0.85, 0.45), (-0.55, 0.4)] {
+        let strand_rect = Rect::from_min_size(
+            Pos2::new(center.x + radius * x_offset, center.y - radius * 0.2),
+            egui::vec2(radius * width_mult, radius * 1.3),
+        );
+        draw_simple_layered_rect(painter, strand_rect, radius * 0.12, hair_color);
+    }
+
+    // Flowing hair strands on right side
+    for (x_offset, width_mult) in [(0.4, 0.45), (0.15, 0.4)] {
+        let strand_rect = Rect::from_min_size(
+            Pos2::new(center.x + radius * x_offset, center.y - radius * 0.2),
+            egui::vec2(radius * width_mult, radius * 1.3),
+        );
+        draw_simple_layered_rect(painter, strand_rect, radius * 0.12, hair_color);
+    }
 
     // Face - layered rounded rectangle
     let face_rect = Rect::from_center_size(
@@ -372,7 +443,11 @@ fn draw_princess(painter: &egui::Painter, center: Pos2, radius: f32, happy: bool
         Pos2::new(center.x - radius * 0.15, tiara_y + radius * 0.1),
         Pos2::new(center.x + radius * 0.15, tiara_y + radius * 0.1),
     ];
-    painter.add(egui::Shape::convex_polygon(peak_points.to_vec(), tiara_color, Stroke::NONE));
+    painter.add(egui::Shape::convex_polygon(
+        peak_points.to_vec(),
+        tiara_color,
+        Stroke::NONE,
+    ));
     // Side peaks
     for offset in [-0.35, 0.35] {
         let peak = [
@@ -380,7 +455,11 @@ fn draw_princess(painter: &egui::Painter, center: Pos2, radius: f32, happy: bool
             Pos2::new(center.x + radius * (offset - 0.1), tiara_y + radius * 0.1),
             Pos2::new(center.x + radius * (offset + 0.1), tiara_y + radius * 0.1),
         ];
-        painter.add(egui::Shape::convex_polygon(peak.to_vec(), tiara_color, Stroke::NONE));
+        painter.add(egui::Shape::convex_polygon(
+            peak.to_vec(),
+            tiara_color,
+            Stroke::NONE,
+        ));
     }
     // Gem in center - rounded square
     let gem_rect = Rect::from_center_size(
@@ -412,11 +491,17 @@ fn draw_princess(painter: &egui::Painter, center: Pos2, radius: f32, happy: bool
         let lash_x_left = center.x - eye_offset + (i as f32) * radius * 0.08;
         let lash_x_right = center.x + eye_offset + (i as f32) * radius * 0.08;
         painter.line_segment(
-            [Pos2::new(lash_x_left, eye_y - radius * 0.12), Pos2::new(lash_x_left, eye_y - radius * 0.2)],
+            [
+                Pos2::new(lash_x_left, eye_y - radius * 0.12),
+                Pos2::new(lash_x_left, eye_y - radius * 0.2),
+            ],
             Stroke::new(1.5, Color32::BLACK),
         );
         painter.line_segment(
-            [Pos2::new(lash_x_right, eye_y - radius * 0.12), Pos2::new(lash_x_right, eye_y - radius * 0.2)],
+            [
+                Pos2::new(lash_x_right, eye_y - radius * 0.12),
+                Pos2::new(lash_x_right, eye_y - radius * 0.2),
+            ],
             Stroke::new(1.5, Color32::BLACK),
         );
     }
@@ -478,11 +563,21 @@ fn draw_jockey(painter: &egui::Painter, center: Pos2, radius: f32, happy: bool) 
         );
         painter.rect_filled(lens_rect, radius * 0.08, lens_color);
         // Lens border
-        painter.rect_stroke(lens_rect, radius * 0.08, Stroke::new(2.0, goggle_color), egui::epaint::StrokeKind::Outside);
+        painter.rect_stroke(
+            lens_rect,
+            radius * 0.08,
+            Stroke::new(2.0, goggle_color),
+            egui::epaint::StrokeKind::Outside,
+        );
     }
 
     // Eyes
-    draw_eyes(painter, Pos2::new(center.x, center.y + radius * 0.1), radius * 0.8, Color32::from_rgb(60, 120, 60));
+    draw_eyes(
+        painter,
+        Pos2::new(center.x, center.y + radius * 0.1),
+        radius * 0.8,
+        Color32::from_rgb(60, 120, 60),
+    );
 
     // Smile
     let smile_center = Pos2::new(center.x, center.y + radius * 0.1);
@@ -518,8 +613,16 @@ fn draw_pharaoh(painter: &egui::Painter, center: Pos2, radius: f32, happy: bool)
         Pos2::new(center.x + radius * 0.9, center.y + radius * 0.7),
         Pos2::new(center.x + radius * 0.4, center.y + radius * 0.5),
     ];
-    painter.add(egui::Shape::convex_polygon(flap_points_left.to_vec(), headdress_color, Stroke::NONE));
-    painter.add(egui::Shape::convex_polygon(flap_points_right.to_vec(), headdress_color, Stroke::NONE));
+    painter.add(egui::Shape::convex_polygon(
+        flap_points_left.to_vec(),
+        headdress_color,
+        Stroke::NONE,
+    ));
+    painter.add(egui::Shape::convex_polygon(
+        flap_points_right.to_vec(),
+        headdress_color,
+        Stroke::NONE,
+    ));
 
     // Gold headband - simple layered rectangle
     let headband_rect = Rect::from_center_size(
@@ -562,11 +665,17 @@ fn draw_pharaoh(painter: &egui::Painter, center: Pos2, radius: f32, happy: bool)
     }
     // Eyeliner (keep as line segments for detail)
     painter.line_segment(
-        [Pos2::new(center.x - eye_offset - radius * 0.1, eye_y), Pos2::new(center.x - eye_offset - radius * 0.25, eye_y + radius * 0.1)],
+        [
+            Pos2::new(center.x - eye_offset - radius * 0.1, eye_y),
+            Pos2::new(center.x - eye_offset - radius * 0.25, eye_y + radius * 0.1),
+        ],
         Stroke::new(2.0, Color32::BLACK),
     );
     painter.line_segment(
-        [Pos2::new(center.x + eye_offset + radius * 0.1, eye_y), Pos2::new(center.x + eye_offset + radius * 0.25, eye_y + radius * 0.1)],
+        [
+            Pos2::new(center.x + eye_offset + radius * 0.1, eye_y),
+            Pos2::new(center.x + eye_offset + radius * 0.25, eye_y + radius * 0.1),
+        ],
         Stroke::new(2.0, Color32::BLACK),
     );
 
@@ -602,8 +711,16 @@ fn draw_nomad(painter: &egui::Painter, center: Pos2, radius: f32, happy: bool) {
         Pos2::new(center.x + radius * 0.8, center.y + radius * 0.6),
         Pos2::new(center.x + radius * 0.2, center.y + radius * 0.4),
     ];
-    painter.add(egui::Shape::convex_polygon(left_drape.to_vec(), scarf_color, Stroke::NONE));
-    painter.add(egui::Shape::convex_polygon(right_drape.to_vec(), scarf_color, Stroke::NONE));
+    painter.add(egui::Shape::convex_polygon(
+        left_drape.to_vec(),
+        scarf_color,
+        Stroke::NONE,
+    ));
+    painter.add(egui::Shape::convex_polygon(
+        right_drape.to_vec(),
+        scarf_color,
+        Stroke::NONE,
+    ));
 
     // Face wrap (covers lower face) - only if not happy
     if !happy {
@@ -653,17 +770,27 @@ fn draw_nomad(painter: &egui::Painter, center: Pos2, radius: f32, happy: bool) {
     }
     // Eyebrows (thick, weathered) - keep as line segments
     painter.line_segment(
-        [Pos2::new(center.x - eye_offset - radius * 0.12, eye_y - radius * 0.15), Pos2::new(center.x - eye_offset + radius * 0.12, eye_y - radius * 0.18)],
+        [
+            Pos2::new(center.x - eye_offset - radius * 0.12, eye_y - radius * 0.15),
+            Pos2::new(center.x - eye_offset + radius * 0.12, eye_y - radius * 0.18),
+        ],
         Stroke::new(3.0, Color32::from_rgb(30, 20, 10)),
     );
     painter.line_segment(
-        [Pos2::new(center.x + eye_offset - radius * 0.12, eye_y - radius * 0.18), Pos2::new(center.x + eye_offset + radius * 0.12, eye_y - radius * 0.15)],
+        [
+            Pos2::new(center.x + eye_offset - radius * 0.12, eye_y - radius * 0.18),
+            Pos2::new(center.x + eye_offset + radius * 0.12, eye_y - radius * 0.15),
+        ],
         Stroke::new(3.0, Color32::from_rgb(30, 20, 10)),
     );
 
     // Smile when happy (visible since wrap is pulled down)
     if happy {
-        draw_big_smile(painter, Pos2::new(center.x, center.y + radius * 0.1), radius * 0.7);
+        draw_big_smile(
+            painter,
+            Pos2::new(center.x, center.y + radius * 0.1),
+            radius * 0.7,
+        );
     }
 }
 
@@ -697,7 +824,12 @@ fn draw_scholar(painter: &egui::Painter, center: Pos2, radius: f32, happy: bool)
             Pos2::new(lens_x, glass_y),
             egui::vec2(radius * 0.36, radius * 0.32),
         );
-        painter.rect_stroke(lens_rect, radius * 0.08, Stroke::new(2.5, glasses_color), egui::epaint::StrokeKind::Outside);
+        painter.rect_stroke(
+            lens_rect,
+            radius * 0.08,
+            Stroke::new(2.5, glasses_color),
+            egui::epaint::StrokeKind::Outside,
+        );
         // Eye behind lens - small rounded rectangle
         let eye_rect = Rect::from_center_size(
             Pos2::new(lens_x, glass_y),
@@ -707,16 +839,25 @@ fn draw_scholar(painter: &egui::Painter, center: Pos2, radius: f32, happy: bool)
     }
     // Bridge
     painter.line_segment(
-        [Pos2::new(center.x - glass_offset + radius * 0.18, glass_y), Pos2::new(center.x + glass_offset - radius * 0.18, glass_y)],
+        [
+            Pos2::new(center.x - glass_offset + radius * 0.18, glass_y),
+            Pos2::new(center.x + glass_offset - radius * 0.18, glass_y),
+        ],
         Stroke::new(2.5, glasses_color),
     );
     // Temples
     painter.line_segment(
-        [Pos2::new(center.x - glass_offset - radius * 0.18, glass_y), Pos2::new(center.x - radius * 0.7, glass_y - radius * 0.1)],
+        [
+            Pos2::new(center.x - glass_offset - radius * 0.18, glass_y),
+            Pos2::new(center.x - radius * 0.7, glass_y - radius * 0.1),
+        ],
         Stroke::new(2.5, glasses_color),
     );
     painter.line_segment(
-        [Pos2::new(center.x + glass_offset + radius * 0.18, glass_y), Pos2::new(center.x + radius * 0.7, glass_y - radius * 0.1)],
+        [
+            Pos2::new(center.x + glass_offset + radius * 0.18, glass_y),
+            Pos2::new(center.x + radius * 0.7, glass_y - radius * 0.1),
+        ],
         Stroke::new(2.5, glasses_color),
     );
 
@@ -735,12 +876,30 @@ fn draw_fortune_teller(painter: &egui::Painter, center: Pos2, radius: f32, happy
     let veil_color = Color32::from_rgb(80, 20, 120); // Deep purple
     let gold = Color32::from_rgb(255, 200, 50);
 
-    // Mystical veil/hood - layered rounded rectangle
-    let veil_rect = Rect::from_center_size(
-        center,
-        egui::vec2(radius * 1.9, radius * 1.9),
+    // Veil cap - covers top and sides of head
+    let veil_cap_rect = Rect::from_center_size(
+        Pos2::new(center.x, center.y - radius * 0.3),
+        egui::vec2(radius * 1.9, radius * 1.3),
     );
-    draw_layered_rect(painter, veil_rect, radius * 0.4, veil_color);
+    draw_layered_rect(painter, veil_cap_rect, radius * 0.4, veil_color);
+
+    // Flowing veil strands on left side (wider/more flowing than princess)
+    for (x_offset, width_mult) in [(-0.75, 0.4), (-0.45, 0.35)] {
+        let strand_rect = Rect::from_min_size(
+            Pos2::new(center.x + radius * x_offset, center.y - radius * 0.2),
+            egui::vec2(radius * width_mult, radius * 1.15),
+        );
+        draw_simple_layered_rect(painter, strand_rect, radius * 0.12, veil_color);
+    }
+
+    // Flowing veil strands on right side
+    for (x_offset, width_mult) in [(0.35, 0.4), (0.1, 0.35)] {
+        let strand_rect = Rect::from_min_size(
+            Pos2::new(center.x + radius * x_offset, center.y - radius * 0.2),
+            egui::vec2(radius * width_mult, radius * 1.15),
+        );
+        draw_simple_layered_rect(painter, strand_rect, radius * 0.12, veil_color);
+    }
 
     // Face opening - layered rounded rectangle
     let face_rect = Rect::from_center_size(
@@ -762,19 +921,31 @@ fn draw_fortune_teller(painter: &egui::Painter, center: Pos2, radius: f32, happy
         Pos2::new(center.x, headpiece_y),
         egui::vec2(radius * 0.16, radius * 0.16),
     );
-    painter.rect_filled(center_gem_rect, radius * 0.04, Color32::from_rgb(100, 200, 255));
+    painter.rect_filled(
+        center_gem_rect,
+        radius * 0.04,
+        Color32::from_rgb(100, 200, 255),
+    );
 
     // Side gems - small rounded squares
     let left_gem_rect = Rect::from_center_size(
         Pos2::new(center.x - radius * 0.35, headpiece_y),
         egui::vec2(radius * 0.1, radius * 0.1),
     );
-    painter.rect_filled(left_gem_rect, radius * 0.02, Color32::from_rgb(255, 100, 100));
+    painter.rect_filled(
+        left_gem_rect,
+        radius * 0.02,
+        Color32::from_rgb(255, 100, 100),
+    );
     let right_gem_rect = Rect::from_center_size(
         Pos2::new(center.x + radius * 0.35, headpiece_y),
         egui::vec2(radius * 0.1, radius * 0.1),
     );
-    painter.rect_filled(right_gem_rect, radius * 0.02, Color32::from_rgb(100, 255, 100));
+    painter.rect_filled(
+        right_gem_rect,
+        radius * 0.02,
+        Color32::from_rgb(100, 255, 100),
+    );
 
     // Mysterious eyes - rectangular style
     let eye_y = center.y + radius * 0.05;
@@ -914,7 +1085,7 @@ pub fn draw_avatar_crown(painter: &egui::Painter, rect: Rect) {
 
     // Crown colors
     let gold = Color32::from_rgb(255, 215, 0);
-    let gold_dark = Color32::from_rgb(200, 160, 0);
+    let outline = Color32::from_rgb(60, 40, 0); // Dark outline for visibility
     let jewel_red = Color32::from_rgb(220, 50, 50);
     let jewel_blue = Color32::from_rgb(50, 100, 220);
 
@@ -922,9 +1093,10 @@ pub fn draw_avatar_crown(painter: &egui::Painter, rect: Rect) {
     let base_offset_y = 1.5 * scale;
     let base_rect = Rect::from_center_size(
         crown_center + egui::vec2(0.0, base_offset_y),
-        egui::vec2(BASE_WIDTH * scale, BASE_HEIGHT * scale)
+        egui::vec2(BASE_WIDTH * scale, BASE_HEIGHT * scale),
     );
     painter.rect_filled(base_rect, scale, gold);
+    painter.rect_stroke(base_rect, scale, egui::Stroke::new(scale * 0.4, outline), egui::epaint::StrokeKind::Outside);
 
     // Crown points (triangles)
     let point_base_y = crown_center.y - scale;
@@ -938,7 +1110,11 @@ pub fn draw_avatar_crown(painter: &egui::Painter, rect: Rect) {
             Pos2::new(point_center.x - POINT_WIDTH * scale / 2.0, point_center.y), // Bottom left
             Pos2::new(point_center.x + POINT_WIDTH * scale / 2.0, point_center.y), // Bottom right
         ];
-        painter.add(egui::Shape::convex_polygon(points, gold, egui::Stroke::new(0.5 * scale, gold_dark)));
+        painter.add(egui::Shape::convex_polygon(
+            points,
+            gold,
+            egui::Stroke::new(0.8 * scale, outline),
+        ));
     }
 
     // Gems on crown points
@@ -948,5 +1124,6 @@ pub fn draw_avatar_crown(painter: &egui::Painter, rect: Rect) {
         let x_offset = (i as f32 - 1.0) * POINT_SPACING * scale;
         let gem_pos = Pos2::new(crown_center.x + x_offset, point_base_y - gem_offset_y);
         painter.circle_filled(gem_pos, scale, gem_colors[i as usize]);
+        painter.circle_stroke(gem_pos, scale, egui::Stroke::new(scale * 0.3, outline));
     }
 }

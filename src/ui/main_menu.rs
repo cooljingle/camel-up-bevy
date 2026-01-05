@@ -44,258 +44,281 @@ pub fn main_menu_ui(
     egui::CentralPanel::default()
         .frame(egui::Frame::NONE)
         .show(ctx, |ui| {
-        // Draw pyramid background behind everything
-        let rect = ui.available_rect_before_wrap();
-        draw_pyramid_background(ui.painter(), rect, elapsed);
+            // Draw pyramid background behind everything
+            let rect = ui.available_rect_before_wrap();
+            draw_pyramid_background(ui.painter(), rect, elapsed);
 
-        egui::ScrollArea::vertical().show(ui, |ui| {
-            ui.vertical_centered(|ui| {
-                ui.add_space(if is_mobile { 20.0 } else { 40.0 });
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                ui.vertical_centered(|ui| {
+                    ui.add_space(if is_mobile { 20.0 } else { 40.0 });
 
-                // Responsive title size
-                let title_size = if is_mobile { 32.0 } else { 48.0 };
-                ui.heading(
-                    egui::RichText::new("CAMEL UP")
-                        .size(title_size)
-                        .color(egui::Color32::WHITE),
-                );
-                ui.add_space(10.0);
-                ui.label(
-                    egui::RichText::new("A camel racing board game").color(egui::Color32::WHITE),
-                );
-
-                ui.add_space(if is_mobile { 15.0 } else { 30.0 });
-
-                // Player Setup Section
-                egui::Frame::new()
-                    .fill(egui::Color32::from_rgba_unmultiplied(0x5A, 0x4D, 0x40, 200)) // STONE_DARK with transparency
-                    .stroke(egui::Stroke::new(2.0, STONE_DARK))
-                    .corner_radius(8.0)
-                    .inner_margin(12.0)
-                    .show(ui, |ui| {
-                    // Responsive width
-                    if !is_mobile {
-                        ui.set_min_width(400.0);
-                    }
-
-                    // Player count controls
-                    let compact_style = DesertButtonStyle::compact();
-                    ui.horizontal(|ui| {
-                        ui.add_space(if is_mobile { 8.0 } else { 20.0 });
-                        ui.label(
-                            egui::RichText::new(format!("{} players", config.players.len()))
-                                .size(16.0)
-                                .color(egui::Color32::WHITE),
-                        );
-
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            ui.add_space(if is_mobile { 8.0 } else { 20.0 });
-                            let can_add = config.players.len() < PlayerSetupConfig::MAX_PLAYERS;
-                            if desert_button_enabled(ui, "+", &compact_style, can_add).clicked()
-                                && can_add
-                            {
-                                config.add_player();
-                            }
-
-                            let can_remove = config.players.len() > PlayerSetupConfig::MIN_PLAYERS;
-                            if desert_button_enabled(ui, "-", &compact_style, can_remove).clicked()
-                                && can_remove
-                            {
-                                config.remove_player();
-                            }
-                        });
-                    });
-
+                    // Responsive title size
+                    let title_size = if is_mobile { 32.0 } else { 48.0 };
+                    ui.heading(
+                        egui::RichText::new("CAMEL UP")
+                            .size(title_size)
+                            .color(egui::Color32::WHITE),
+                    );
                     ui.add_space(10.0);
+                    ui.label(
+                        egui::RichText::new("A camel racing board game")
+                            .color(egui::Color32::WHITE),
+                    );
 
-                    // Player list
-                    egui::ScrollArea::vertical()
-                        .max_height(200.0)
-                        .show(ui, |ui| {
-                            for i in 0..config.players.len() {
-                                let player_color = PLAYER_COLORS[i % PLAYER_COLORS.len()];
-                                let character_id = config.players[i].character_id;
+                    ui.add_space(if is_mobile { 15.0 } else { 30.0 });
 
-                                // Calculate used characters (for cycling)
-                                let used: HashSet<CharacterId> = config
-                                    .players
-                                    .iter()
-                                    .enumerate()
-                                    .filter(|(idx, _)| *idx != i)
-                                    .map(|(_, p)| p.character_id)
-                                    .collect();
+                    // Player Setup Section
+                    egui::Frame::new().inner_margin(12.0).show(ui, |ui| {
+                        // Responsive width
+                        if !is_mobile {
+                            ui.set_min_width(400.0);
+                        }
 
-                                // Use fixed-height row with centered vertical alignment
-                                let row_height = 44.0;
-                                ui.allocate_ui(
-                                    egui::vec2(ui.available_width(), row_height),
-                                    |ui| {
-                                        ui.with_layout(
-                                            egui::Layout::left_to_right(egui::Align::Center),
-                                            |ui| {
-                                                ui.add_space(10.0);
+                        // Player count controls
+                        let compact_style = DesertButtonStyle::compact();
+                        ui.horizontal(|ui| {
+                            ui.add_space(if is_mobile { 8.0 } else { 20.0 });
+                            ui.label(
+                                egui::RichText::new(format!("{} players", config.players.len()))
+                                    .size(16.0)
+                                    .color(egui::Color32::WHITE),
+                            );
 
-                                                // Character avatar (tap to cycle)
-                                                let avatar_size = 40.0;
-                                                let (rect, response) = ui.allocate_exact_size(
-                                                    egui::vec2(avatar_size, avatar_size),
-                                                    egui::Sense::click(),
-                                                );
-                                                draw_avatar(
-                                                    ui.painter(),
-                                                    rect,
-                                                    character_id,
-                                                    Some(player_color),
-                                                );
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    ui.add_space(if is_mobile { 8.0 } else { 20.0 });
+                                    let can_add =
+                                        config.players.len() < PlayerSetupConfig::MAX_PLAYERS;
+                                    if desert_button_enabled(ui, "+", &compact_style, can_add)
+                                        .clicked()
+                                        && can_add
+                                    {
+                                        config.add_player();
+                                    }
 
-                                                // Cycle on click
-                                                if response.clicked() {
-                                                    let current_idx = character_id as usize;
-                                                    for offset in 1..=8 {
-                                                        let next = CharacterId::from_index(
-                                                            (current_idx + offset) % 8,
-                                                        );
-                                                        if !used.contains(&next) {
-                                                            config.players[i].character_id = next;
-                                                            break;
+                                    let can_remove =
+                                        config.players.len() > PlayerSetupConfig::MIN_PLAYERS;
+                                    if desert_button_enabled(ui, "-", &compact_style, can_remove)
+                                        .clicked()
+                                        && can_remove
+                                    {
+                                        config.remove_player();
+                                    }
+                                },
+                            );
+                        });
+
+                        ui.add_space(5.0);
+
+                        // Player list
+                        egui::ScrollArea::vertical()
+                            .max_height(220.0)
+                            .show(ui, |ui| {
+                                for i in 0..config.players.len() {
+                                    let player_color = PLAYER_COLORS[config.players[i].color_index % PLAYER_COLORS.len()];
+                                    let character_id = config.players[i].character_id;
+
+                                    // Calculate used characters (for cycling)
+                                    let used: HashSet<CharacterId> = config
+                                        .players
+                                        .iter()
+                                        .enumerate()
+                                        .filter(|(idx, _)| *idx != i)
+                                        .map(|(_, p)| p.character_id)
+                                        .collect();
+
+                                    // Use fixed-height row with centered vertical alignment
+                                    let row_height = 44.0;
+                                    ui.allocate_ui(
+                                        egui::vec2(ui.available_width(), row_height),
+                                        |ui| {
+                                            ui.with_layout(
+                                                egui::Layout::left_to_right(egui::Align::Center),
+                                                |ui| {
+                                                    ui.add_space(10.0);
+
+                                                    // Character avatar (tap to cycle)
+                                                    let avatar_size = 40.0;
+                                                    let (rect, response) = ui.allocate_exact_size(
+                                                        egui::vec2(avatar_size, avatar_size),
+                                                        egui::Sense::click(),
+                                                    );
+                                                    draw_avatar(
+                                                        ui.painter(),
+                                                        rect,
+                                                        character_id,
+                                                        Some(player_color),
+                                                    );
+
+                                                    // Cycle on click
+                                                    if response.clicked() {
+                                                        let current_idx = character_id as usize;
+                                                        for offset in 1..=8 {
+                                                            let next = CharacterId::from_index(
+                                                                (current_idx + offset) % 8,
+                                                            );
+                                                            if !used.contains(&next) {
+                                                                config.players[i].character_id = next;
+                                                                // Update name if AI and not manually edited
+                                                                if config.players[i].is_ai && !config.players[i].name_edited {
+                                                                    config.players[i].name = next.random_name();
+                                                                }
+                                                                break;
+                                                            }
                                                         }
                                                     }
-                                                }
 
-                                                ui.add_space(10.0);
+                                                    ui.add_space(10.0);
 
-                                                // Calculate remaining width for flexible name input
-                                                // Reserve space for: toggle (100) + spacing (8) + right padding (10)
-                                                let toggle_width = 100.0;
-                                                let reserved_width = toggle_width + 8.0 + 10.0;
-                                                let _available =
-                                                    ui.available_width() - reserved_width;
-                                                let name_width = 100.0;
+                                                    // Calculate remaining width for flexible name input
+                                                    // Reserve space for: toggle (100) + spacing (8) + right padding (10)
+                                                    let toggle_width = 100.0;
+                                                    let reserved_width = toggle_width + 8.0 + 10.0;
+                                                    let _available =
+                                                        ui.available_width() - reserved_width;
+                                                    let name_width = 100.0;
 
-                                                // Name input - themed style, flexible width
-                                                let name = &mut config.players[i].name;
-                                                let text_edit = egui::TextEdit::singleline(name)
-                                                    .desired_width(name_width)
-                                                    .font(egui::FontId::proportional(14.0))
-                                                    .text_color(egui::Color32::WHITE);
-                                                ui.scope(|ui| {
-                                                    ui.visuals_mut().extreme_bg_color = STONE_DARK;
-                                                    ui.add(text_edit);
-                                                });
+                                                    // Name input - themed style, flexible width
+                                                    // Store previous name to detect manual edits
+                                                    let prev_name = config.players[i].name.clone();
+                                                    let name = &mut config.players[i].name;
+                                                    let text_edit =
+                                                        egui::TextEdit::singleline(name)
+                                                            .desired_width(name_width)
+                                                            .font(egui::FontId::proportional(14.0))
+                                                            .text_color(egui::Color32::WHITE);
+                                                    let response = ui.scope(|ui| {
+                                                        ui.visuals_mut().extreme_bg_color =
+                                                            STONE_DARK;
+                                                        ui.add(text_edit)
+                                                    }).inner;
+                                                    // If user changed the name, mark it as edited
+                                                    if response.changed() && config.players[i].name != prev_name {
+                                                        config.players[i].name_edited = true;
+                                                    }
 
-                                                ui.add_space(8.0);
+                                                    ui.add_space(8.0);
 
-                                                // Human/AI toggle
-                                                let is_ai = config.players[i].is_ai;
-                                                let (left_clicked, right_clicked) = desert_toggle(
-                                                    ui,
-                                                    ("player_type", i),
-                                                    is_ai,
-                                                    "Human",
-                                                    "AI",
-                                                );
-                                                if left_clicked {
-                                                    config.players[i].is_ai = false;
-                                                }
-                                                if right_clicked {
-                                                    config.players[i].is_ai = true;
-                                                }
+                                                    // Human/AI toggle
+                                                    let is_ai = config.players[i].is_ai;
+                                                    let (left_clicked, right_clicked) =
+                                                        desert_toggle(
+                                                            ui,
+                                                            ("player_type", i),
+                                                            is_ai,
+                                                            "Human",
+                                                            "AI",
+                                                        );
+                                                    if left_clicked {
+                                                        config.set_player_is_ai(i, false);
+                                                    }
+                                                    if right_clicked {
+                                                        config.set_player_is_ai(i, true);
+                                                    }
 
-                                                ui.add_space(10.0);
-                                            },
-                                        );
-                                    },
+                                                    ui.add_space(10.0);
+                                                },
+                                            );
+                                        },
+                                    );
+                                    ui.add_space(2.0);
+                                }
+                            });
+
+                        ui.add_space(10.0);
+                        // Custom themed separator
+                        let separator_rect = ui.available_rect_before_wrap();
+                        let separator_width = separator_rect.width();
+                        let (sep_rect, _) = ui.allocate_exact_size(
+                            egui::vec2(separator_width, 2.0),
+                            egui::Sense::hover(),
+                        );
+                        ui.painter().line_segment(
+                            [sep_rect.left_center(), sep_rect.right_center()],
+                            egui::Stroke::new(
+                                1.5,
+                                egui::Color32::from_rgba_unmultiplied(0x8A, 0x7B, 0x6A, 150),
+                            ), // STONE with transparency
+                        );
+                        ui.add_space(5.0);
+
+                        // AI Difficulty selector (only show if there are AI players)
+                        let has_ai_players = config.players.iter().any(|p| p.is_ai);
+                        if has_ai_players {
+                            ui.horizontal(|ui| {
+                                ui.add_space(10.0);
+                                ui.label(
+                                    egui::RichText::new("AI Difficulty:")
+                                        .color(egui::Color32::WHITE),
                                 );
                                 ui.add_space(8.0);
-                            }
-                        });
 
-                    ui.add_space(10.0);
-                    // Custom themed separator
-                    let separator_rect = ui.available_rect_before_wrap();
-                    let separator_width = separator_rect.width();
-                    let (sep_rect, _) = ui.allocate_exact_size(egui::vec2(separator_width, 2.0), egui::Sense::hover());
-                    ui.painter().line_segment(
-                        [sep_rect.left_center(), sep_rect.right_center()],
-                        egui::Stroke::new(1.5, egui::Color32::from_rgba_unmultiplied(0x8A, 0x7B, 0x6A, 150)), // STONE with transparency
-                    );
-                    ui.add_space(5.0);
+                                let options = [
+                                    AiDifficulty::Random,
+                                    AiDifficulty::Basic,
+                                    AiDifficulty::Smart,
+                                ];
+                                let labels = ["Random", "Basic", "Smart"];
+                                desert_combobox(
+                                    ui,
+                                    "ai_difficulty",
+                                    &mut ai_config.difficulty,
+                                    &options,
+                                    &labels,
+                                );
+                            });
+                            ui.add_space(5.0);
+                        }
 
-                    // AI Difficulty selector (only show if there are AI players)
-                    let has_ai_players = config.players.iter().any(|p| p.is_ai);
-                    if has_ai_players {
+                        // Randomize start order toggle
                         ui.horizontal(|ui| {
                             ui.add_space(10.0);
-                            ui.label(
-                                egui::RichText::new("AI Difficulty:").color(egui::Color32::WHITE),
-                            );
-                            ui.add_space(8.0);
-
-                            let options = [
-                                AiDifficulty::Random,
-                                AiDifficulty::Basic,
-                                AiDifficulty::Smart,
-                            ];
-                            let labels = ["Random", "Basic", "Smart"];
-                            desert_combobox(
-                                ui,
-                                "ai_difficulty",
-                                &mut ai_config.difficulty,
-                                &options,
-                                &labels,
+                            ui.checkbox(
+                                &mut config.randomize_start_order,
+                                egui::RichText::new("Randomize player order")
+                                    .color(egui::Color32::WHITE),
                             );
                         });
-                        ui.add_space(5.0);
-                    }
 
-                    // Randomize start order toggle
-                    ui.horizontal(|ui| {
                         ui.add_space(10.0);
-                        ui.checkbox(
-                            &mut config.randomize_start_order,
-                            egui::RichText::new("Randomize player order")
-                                .color(egui::Color32::WHITE),
-                        );
                     });
 
-                    ui.add_space(10.0);
-                });
+                    ui.add_space(if is_mobile { 15.0 } else { 30.0 });
 
-                ui.add_space(if is_mobile { 15.0 } else { 30.0 });
+                    // Start Game button - larger on mobile for touch
+                    let start_style = if is_mobile {
+                        DesertButtonStyle {
+                            min_size: egui::vec2(280.0, 60.0),
+                            corner_radius: 10.0,
+                            font_size: 22.0,
+                        }
+                    } else {
+                        DesertButtonStyle::large()
+                    };
 
-                // Start Game button - larger on mobile for touch
-                let start_style = if is_mobile {
-                    DesertButtonStyle {
-                        min_size: egui::vec2(280.0, 60.0),
-                        corner_radius: 10.0,
-                        font_size: 22.0,
+                    if desert_button(ui, "Start Game", &start_style).clicked() {
+                        next_state.set(GameState::Playing);
                     }
-                } else {
-                    DesertButtonStyle::large()
-                };
 
-                if desert_button(ui, "Start Game", &start_style).clicked() {
-                    next_state.set(GameState::Playing);
-                }
+                    ui.add_space(if is_mobile { 10.0 } else { 15.0 });
 
-                ui.add_space(if is_mobile { 10.0 } else { 15.0 });
+                    // How to Play button
+                    let medium_style = DesertButtonStyle::medium();
+                    if desert_button(ui, "How to Play", &medium_style).clicked() {
+                        rules_state.is_open = true;
+                    }
 
-                // How to Play button
-                let medium_style = DesertButtonStyle::medium();
-                if desert_button(ui, "How to Play", &medium_style).clicked() {
-                    rules_state.is_open = true;
-                }
+                    ui.add_space(if is_mobile { 10.0 } else { 15.0 });
 
-                ui.add_space(if is_mobile { 10.0 } else { 15.0 });
-
-                // Quit button (hide on mobile/web - users close the browser tab)
-                #[cfg(not(target_arch = "wasm32"))]
-                if desert_button(ui, "Quit", &DesertButtonStyle::small()).clicked() {
-                    std::process::exit(0);
-                }
+                    // Quit button (hide on mobile/web - users close the browser tab)
+                    #[cfg(not(target_arch = "wasm32"))]
+                    if desert_button(ui, "Quit", &DesertButtonStyle::small()).clicked() {
+                        std::process::exit(0);
+                    }
+                });
             });
         });
-    });
 }
 
 /// Draw a walking camel silhouette
