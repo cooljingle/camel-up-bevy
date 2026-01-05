@@ -1711,7 +1711,7 @@ fn render_mobile_ui(
             // Draw all players in rows
             for row_start in (0..player_count).step_by(per_row) {
                 ui.add_space(2.0); // top
-                ui.horizontal(|ui| {
+                ui.with_layout(egui::Layout::left_to_right(egui::Align::TOP), |ui| {
                     let row_end = (row_start + per_row).min(player_count);
                     for i in row_start..row_end {
                         if let Some(pos) = draw_player_card(ui, i, &players.players[i], card_width)
