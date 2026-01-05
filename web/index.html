@@ -345,6 +345,72 @@
         #fullscreen-hint:hover {
             background: rgba(0,0,0,0.9);
         }
+
+        /* Update notification toast */
+        #update-toast {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            background: linear-gradient(135deg, #2d1f0f 0%, #3a2a1a 100%);
+            color: #FFD700;
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-family: 'Aleo', Georgia, serif;
+            font-size: 14px;
+            box-shadow:
+                0 4px 12px rgba(0,0,0,0.5),
+                inset 0 1px 0 rgba(255,215,0,0.2),
+                0 0 0 2px #6B4A1A;
+            z-index: 2000;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            transition: transform 0.3s ease-out;
+            max-width: 90%;
+        }
+        #update-toast.visible {
+            transform: translateX(-50%) translateY(0);
+        }
+        #update-toast .message {
+            flex: 1;
+            color: #d4a84b;
+        }
+        #update-toast button {
+            background: linear-gradient(135deg, #d4a84b 0%, #FFD700 100%);
+            color: #2d1f0f;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-family: 'Aleo', Georgia, serif;
+            font-weight: 700;
+            font-size: 13px;
+            cursor: pointer;
+            box-shadow:
+                0 2px 4px rgba(0,0,0,0.3),
+                inset 0 1px 0 rgba(255,255,255,0.3);
+            transition: all 0.2s;
+        }
+        #update-toast button:hover {
+            background: linear-gradient(135deg, #FFD700 0%, #d4a84b 100%);
+            transform: translateY(-1px);
+            box-shadow:
+                0 3px 6px rgba(0,0,0,0.4),
+                inset 0 1px 0 rgba(255,255,255,0.3);
+        }
+        #update-toast button:active {
+            transform: translateY(0);
+        }
+        #update-toast button.dismiss {
+            background: transparent;
+            color: #d4a84b;
+            box-shadow: none;
+            padding: 8px 12px;
+        }
+        #update-toast button.dismiss:hover {
+            background: rgba(212, 168, 75, 0.1);
+            transform: none;
+        }
     </style>
 </head>
 <body>
@@ -419,6 +485,13 @@
 
     <!-- Fullscreen hint (desktop only) -->
     <div id="fullscreen-hint">Press ESC to exit fullscreen</div>
+
+    <!-- Update notification toast -->
+    <div id="update-toast">
+        <span class="message">🎮 New version available!</span>
+        <button id="update-reload">Update</button>
+        <button id="update-dismiss" class="dismiss">Later</button>
+    </div>
 
     <script>
         // Mobile device detection - runs before WASM loads
@@ -551,10 +624,52 @@
     <script>
         // Register service worker for offline support (PWA)
         if ('serviceWorker' in navigator) {
+            let newWorker;
+            const updateToast = document.getElementById('update-toast');
+            const updateReloadBtn = document.getElementById('update-reload');
+            const updateDismissBtn = document.getElementById('update-dismiss');
+
             window.addEventListener('load', () => {
                 navigator.serviceWorker.register('sw.js')
-                    .then(reg => console.log('SW registered'))
+                    .then(registration => {
+                        console.log('SW registered');
+
+                        // Check for updates on page load
+                        registration.update();
+
+                        // Listen for new service worker updates
+                        registration.addEventListener('updatefound', () => {
+                            newWorker = registration.installing;
+
+                            newWorker.addEventListener('statechange', () => {
+                                // If new service worker is installed but waiting to activate
+                                if (newWorker.state === 'installed' &&
+                                    navigator.serviceWorker.controller) {
+                                    // Show update toast
+                                    updateToast.classList.add('visible');
+                                }
+                            });
+                        });
+                    })
                     .catch(err => console.log('SW registration failed:', err));
+
+                // Reload button - activate new service worker and refresh
+                updateReloadBtn.addEventListener('click', () => {
+                    if (newWorker) {
+                        newWorker.postMessage({ type: 'SKIP_WAITING' });
+                    }
+                    window.location.reload();
+                });
+
+                // Dismiss button - hide toast
+                updateDismissBtn.addEventListener('click', () => {
+                    updateToast.classList.remove('visible');
+                });
+
+                // Listen for service worker to take control (after skipWaiting)
+                navigator.serviceWorker.addEventListener('controllerchange', () => {
+                    // New service worker activated, page will reload via button click
+                });
             });
         }
     </script>

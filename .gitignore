@@ -36,5 +36,8 @@ nul
 *.tar.gz
 *.zip
 
+# Node.js (temporary dependencies)
+node_modules/
+
 # Claude
 .claude/

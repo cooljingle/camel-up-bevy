@@ -20,7 +20,7 @@ self.addEventListener('install', event => {
                 console.log('Caching app shell');
                 return cache.addAll(urlsToCache);
             })
-            .then(() => self.skipWaiting())
+            // Don't auto-skipWaiting - wait for user to click "Update"
     );
 });
 
@@ -38,6 +38,13 @@ self.addEventListener('activate', event => {
             );
         }).then(() => self.clients.claim())
     );
+});
+
+// Message event - handle update commands from the page
+self.addEventListener('message', event => {
+    if (event.data && event.data.type === 'SKIP_WAITING') {
+        self.skipWaiting();
+    }
 });
 
 // Fetch event - serve from cache, fallback to network
