@@ -392,9 +392,9 @@ fn draw_walking_camel(
 
     // Darken the main color for the border (multiply by 0.6)
     let border_color = egui::Color32::from_rgba_unmultiplied(
-        ((color.r() as f32 * 0.6) as u8),
-        ((color.g() as f32 * 0.6) as u8),
-        ((color.b() as f32 * 0.6) as u8),
+        (color.r() as f32 * 0.6) as u8,
+        (color.g() as f32 * 0.6) as u8,
+        (color.b() as f32 * 0.6) as u8,
         alpha,
     );
 
@@ -408,9 +408,9 @@ fn draw_walking_camel(
 
     // Lighten the main color for highlights (blend with white)
     let highlight_color = egui::Color32::from_rgba_unmultiplied(
-        ((color.r() as f32 * 0.6 + 255.0 * 0.4) as u8),
-        ((color.g() as f32 * 0.6 + 255.0 * 0.4) as u8),
-        ((color.b() as f32 * 0.6 + 255.0 * 0.4) as u8),
+        (color.r() as f32 * 0.6 + 255.0 * 0.4) as u8,
+        (color.g() as f32 * 0.6 + 255.0 * 0.4) as u8,
+        (color.b() as f32 * 0.6 + 255.0 * 0.4) as u8,
         alpha,
     );
 
