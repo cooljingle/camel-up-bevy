@@ -122,13 +122,13 @@ fn draw_rect_eyes(painter: &egui::Painter, center: Pos2, radius: f32, iris_color
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub enum CharacterId {
     #[default]
-    DesertExplorer = 0,
+    Scholar = 0,
     Merchant = 1,
     Princess = 2,
     Jockey = 3,
     Pharaoh = 4,
     Nomad = 5,
-    Scholar = 6,
+    DesertExplorer = 6,
     FortuneTeller = 7,
     SnakeCharmer = 8,
     Sultan = 9,
@@ -144,13 +144,13 @@ impl CharacterId {
     /// Get character from index (0-15), wrapping if needed
     pub fn from_index(index: usize) -> Self {
         match index % 16 {
-            0 => Self::DesertExplorer,
+            0 => Self::Scholar,
             1 => Self::Merchant,
             2 => Self::Princess,
             3 => Self::Jockey,
             4 => Self::Pharaoh,
             5 => Self::Nomad,
-            6 => Self::Scholar,
+            6 => Self::DesertExplorer,
             7 => Self::FortuneTeller,
             8 => Self::SnakeCharmer,
             9 => Self::Sultan,

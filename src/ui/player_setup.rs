@@ -73,48 +73,40 @@ pub struct PlayerSetupConfig {
 
 impl Default for PlayerSetupConfig {
     fn default() -> Self {
-        // Create shuffled character IDs so each game starts with random characters
-        let mut rng = rand::thread_rng();
-        let mut character_ids: Vec<CharacterId> = (0..16)
-            .map(CharacterId::from_index)
-            .collect();
-        character_ids.shuffle(&mut rng);
-
-        // Shuffle color indices so each game starts with random colors
-        let mut color_indices: Vec<usize> = (0..8).collect();
-        color_indices.shuffle(&mut rng);
-
         // Start with 1 human + 3 AI players by default
-        // AI players get random thematic names based on their character
-        // Player 1 always has red background (0) and Scholar/Wisdom avatar (6)
+        // Use sequential character and color indices (0, 1, 2, 3)
+        // Player 1: Scholar (0), Red (0)
+        // Player 2: Merchant (1), Blue (1)
+        // Player 3: Princess (2), Green (2)
+        // Player 4: Jockey (3), Yellow (3)
         Self {
             players: vec![
                 PlayerConfig {
                     name: "Player 1".to_string(),
                     is_ai: false,
-                    character_id: CharacterId::from_index(6), // Scholar/Wisdom
+                    character_id: CharacterId::from_index(0), // Scholar
                     color_index: 0, // Red
                     name_edited: false,
                 },
                 PlayerConfig {
-                    name: character_ids[1].random_name(),
+                    name: CharacterId::from_index(1).random_name(),
                     is_ai: true,
-                    character_id: character_ids[1],
-                    color_index: color_indices[1],
+                    character_id: CharacterId::from_index(1), // Merchant
+                    color_index: 1, // Blue
                     name_edited: false,
                 },
                 PlayerConfig {
-                    name: character_ids[2].random_name(),
+                    name: CharacterId::from_index(2).random_name(),
                     is_ai: true,
-                    character_id: character_ids[2],
-                    color_index: color_indices[2],
+                    character_id: CharacterId::from_index(2), // Princess
+                    color_index: 2, // Green
                     name_edited: false,
                 },
                 PlayerConfig {
-                    name: character_ids[3].random_name(),
+                    name: CharacterId::from_index(3).random_name(),
                     is_ai: true,
-                    character_id: character_ids[3],
-                    color_index: color_indices[3],
+                    character_id: CharacterId::from_index(3), // Jockey
+                    color_index: 3, // Yellow
                     name_edited: false,
                 },
             ],
