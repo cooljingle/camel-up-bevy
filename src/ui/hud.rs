@@ -4010,10 +4010,16 @@ pub fn leg_scoring_modal_ui(
                         // Current standings
                         // Only show heading on desktop to save vertical space on mobile
                         if ui_state.use_side_panels {
-                            ui.heading(egui::RichText::new("Current Standings").size(20.0));
+                            ui.horizontal(|ui| {
+                                ui.add_space(5.0);
+                                ui.heading(egui::RichText::new("Current Standings").size(20.0));
+                            });
                         }
 
-                        for (rank, (name, money)) in sorted_players.iter().enumerate() {
+                        ui.horizontal(|ui| {
+                            ui.add_space(5.0);
+                            ui.vertical(|ui| {
+                                for (rank, (name, money)) in sorted_players.iter().enumerate() {
                             let rank_text = match rank {
                                 0 => "1st",
                                 1 => "2nd",
@@ -4025,8 +4031,10 @@ pub fn leg_scoring_modal_ui(
                                 7 => "8th",
                                 _ => "   ",
                             };
-                            ui.label(format!("{}: {} - ${}", rank_text, name, money));
-                        }
+                                    ui.label(format!("{}: {} - ${}", rank_text, name, money));
+                                }
+                            });
+                        });
 
                         ui.add_space(30.0);
 
