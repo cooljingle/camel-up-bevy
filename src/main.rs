@@ -67,7 +67,7 @@ fn main() {
     #[cfg(not(target_arch = "wasm32"))]
     let window_config = Window {
         title: "Camel Up".to_string(),
-        resolution: bevy::window::WindowResolution::new(1280, 720),
+        resolution: bevy::window::WindowResolution::new(400, 890),
         ..default()
     };
 
@@ -569,7 +569,14 @@ fn setup_game_with_resources(
     materials: ResMut<Assets<ColorMaterial>>,
     asset_server: Res<AssetServer>,
 ) {
-    setup_game(commands, config, existing_camels, meshes, materials, asset_server);
+    setup_game(
+        commands,
+        config,
+        existing_camels,
+        meshes,
+        materials,
+        asset_server,
+    );
 }
 
 /// Initialize turn-related resources
