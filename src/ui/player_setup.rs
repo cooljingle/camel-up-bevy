@@ -151,6 +151,36 @@ impl PlayerSetupConfig {
         }
     }
 
+    /// Randomize color, avatar, and name for all players
+    pub fn randomize_players(&mut self) {
+        let mut rng = rand::thread_rng();
+
+        // Create shuffled character IDs
+        let mut character_ids: Vec<CharacterId> = (0..16)
+            .map(CharacterId::from_index)
+            .collect();
+        character_ids.shuffle(&mut rng);
+
+        // Create shuffled color indices
+        let mut color_indices: Vec<usize> = (0..8).collect();
+        color_indices.shuffle(&mut rng);
+
+        // Assign to each player
+        for (i, player) in self.players.iter_mut().enumerate() {
+            player.character_id = character_ids[i % character_ids.len()];
+            player.color_index = color_indices[i % color_indices.len()];
+
+            // Update name based on new character (if not manually edited)
+            if !player.name_edited {
+                if player.is_ai {
+                    player.name = player.character_id.random_name();
+                } else {
+                    player.name = format!("Player {}", i + 1);
+                }
+            }
+        }
+    }
+
     /// Update name when toggling between Human and AI (if name wasn't manually edited)
     pub fn set_player_is_ai(&mut self, player_index: usize, is_ai: bool) {
         if player_index >= self.players.len() {

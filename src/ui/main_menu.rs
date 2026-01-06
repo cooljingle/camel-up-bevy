@@ -128,6 +128,18 @@ pub fn main_menu_ui(
                                     {
                                         config.remove_player();
                                     }
+
+                                    ui.add_space(if is_mobile { 4.0 } else { 8.0 });
+
+                                    // Randomize button
+                                    let randomize_style = DesertButtonStyle {
+                                        min_size: egui::vec2(60.0, 22.0),
+                                        corner_radius: 4.0,
+                                        font_size: 12.0,
+                                    };
+                                    if desert_button(ui, "🎲", &randomize_style).clicked() {
+                                        config.randomize_players();
+                                    }
                                 },
                             );
                         });
