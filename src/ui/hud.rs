@@ -3603,6 +3603,9 @@ pub fn update_camel_position_animations(
     // Check if any camels are scaling in
     let any_scaling = animations.positions.iter().any(|a| a.phase == CamelAnimationPhase::ScalingIn);
 
+    // Calculate length before mutable borrow to avoid borrow conflict
+    let num_existing = animations.positions.len();
+
     for anim in &mut animations.positions {
         match anim.phase {
             CamelAnimationPhase::ScalingIn => {
@@ -3613,7 +3616,6 @@ pub fn update_camel_position_animations(
                     // Transition to reordering phase
                     // Calculate where this camel needs to go
                     if let Some(target_rank) = current_order.iter().position(|&c| c == anim.color) {
-                        let num_existing = animations.positions.len();
                         // Start from leftmost position (last place position)
                         anim.current_y_offset = (target_rank as i32 - (num_existing - 1) as i32) as f32 * CAMEL_POSITION_ROW_HEIGHT;
                         anim.target_y_offset = 0.0;
