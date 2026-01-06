@@ -186,8 +186,9 @@ pub fn main_menu_ui(
                                                         Some(player_color),
                                                     );
 
-                                                    // Cycle on click
+                                                    // Cycle on click (cycles both avatar and color)
                                                     if response.clicked() {
+                                                        // Cycle character
                                                         let current_idx = character_id as usize;
                                                         for offset in 1..=16 {
                                                             let next = CharacterId::from_index(
@@ -199,6 +200,24 @@ pub fn main_menu_ui(
                                                                 if config.players[i].is_ai && !config.players[i].name_edited {
                                                                     config.players[i].name = next.random_name();
                                                                 }
+                                                                break;
+                                                            }
+                                                        }
+
+                                                        // Cycle color
+                                                        let used_colors: HashSet<usize> = config
+                                                            .players
+                                                            .iter()
+                                                            .enumerate()
+                                                            .filter(|(idx, _)| *idx != i)
+                                                            .map(|(_, p)| p.color_index)
+                                                            .collect();
+
+                                                        let current_color = config.players[i].color_index;
+                                                        for offset in 1..=8 {
+                                                            let next_color = (current_color + offset) % 8;
+                                                            if !used_colors.contains(&next_color) {
+                                                                config.players[i].color_index = next_color;
                                                                 break;
                                                             }
                                                         }
