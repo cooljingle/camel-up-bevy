@@ -567,8 +567,9 @@ fn setup_game_with_resources(
     existing_camels: Query<Entity, With<components::Camel>>,
     meshes: ResMut<Assets<Mesh>>,
     materials: ResMut<Assets<ColorMaterial>>,
+    asset_server: Res<AssetServer>,
 ) {
-    setup_game(commands, config, existing_camels, meshes, materials);
+    setup_game(commands, config, existing_camels, meshes, materials, asset_server);
 }
 
 /// Initialize turn-related resources
