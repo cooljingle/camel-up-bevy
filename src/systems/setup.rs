@@ -43,7 +43,7 @@ fn spawn_board_space(commands: &mut Commands, pos: Vec2, index: u8) {
 
     // Shadow layer (offset down-right, darker)
     commands.spawn((
-        DespawnOnExit(GameState::Playing),
+        DespawnOnExit(GameState::GameEnd),
         Sprite {
             color: Color::srgba(0.3, 0.25, 0.15, 0.5),
             custom_size: Some(space_size),
@@ -54,7 +54,7 @@ fn spawn_board_space(commands: &mut Commands, pos: Vec2, index: u8) {
 
     // Border layer (slightly larger, dark brown)
     commands.spawn((
-        DespawnOnExit(GameState::Playing),
+        DespawnOnExit(GameState::GameEnd),
         Sprite {
             color: Color::srgb(0.4, 0.3, 0.2),
             custom_size: Some(space_size + Vec2::new(4.0, 4.0)),
@@ -65,7 +65,7 @@ fn spawn_board_space(commands: &mut Commands, pos: Vec2, index: u8) {
 
     // Main space (sand color)
     commands.spawn((
-        DespawnOnExit(GameState::Playing),
+        DespawnOnExit(GameState::GameEnd),
         BoardSpace { index },
         Sprite {
             color: Color::srgb(0.85, 0.75, 0.55),
@@ -77,7 +77,7 @@ fn spawn_board_space(commands: &mut Commands, pos: Vec2, index: u8) {
 
     // Inner highlight (top portion, subtle)
     commands.spawn((
-        DespawnOnExit(GameState::Playing),
+        DespawnOnExit(GameState::GameEnd),
         Sprite {
             color: Color::srgba(1.0, 0.95, 0.85, 0.3),
             custom_size: Some(Vec2::new(space_size.x - 8.0, space_size.y * 0.4)),
@@ -88,7 +88,7 @@ fn spawn_board_space(commands: &mut Commands, pos: Vec2, index: u8) {
 
     // Space number label (below the space)
     commands.spawn((
-        DespawnOnExit(GameState::Playing),
+        DespawnOnExit(GameState::GameEnd),
         Text2d::new(format!("{}", index + 1)),
         TextFont {
             font_size: 16.0,
@@ -102,7 +102,7 @@ fn spawn_board_space(commands: &mut Commands, pos: Vec2, index: u8) {
     let tile_size = Vec2::new(35.0, 18.0);
     commands
         .spawn((
-            DespawnOnExit(GameState::Playing),
+            DespawnOnExit(GameState::GameEnd),
             crate::components::board::SpectatorTileSprite { space_index: index },
             Sprite {
                 color: Color::srgba(0.0, 0.0, 0.0, 0.0), // Start invisible
@@ -147,7 +147,7 @@ fn spawn_finish_line(commands: &mut Commands, pos: Vec2) {
             let is_white = (row + col) % 2 == 0;
             let color = if is_white { Color::WHITE } else { Color::BLACK };
             commands.spawn((
-                DespawnOnExit(GameState::Playing),
+                DespawnOnExit(GameState::GameEnd),
                 Sprite {
                     color,
                     custom_size: Some(Vec2::splat(checker_size)),
@@ -168,7 +168,7 @@ fn spawn_finish_line(commands: &mut Commands, pos: Vec2) {
     let pole_y = pos.y;
 
     commands.spawn((
-        DespawnOnExit(GameState::Playing),
+        DespawnOnExit(GameState::GameEnd),
         Sprite {
             color: Color::srgb(0.4, 0.3, 0.2), // Brown pole
             custom_size: Some(Vec2::new(4.0, pole_height)),
@@ -179,7 +179,7 @@ fn spawn_finish_line(commands: &mut Commands, pos: Vec2) {
 
     // Add a small ball on top of the pole
     commands.spawn((
-        DespawnOnExit(GameState::Playing),
+        DespawnOnExit(GameState::GameEnd),
         Sprite {
             color: Color::srgb(0.8, 0.7, 0.2), // Gold ball
             custom_size: Some(Vec2::splat(8.0)),
@@ -421,7 +421,7 @@ fn spawn_racing_camel(
 
     // Parent entity with game logic components
     let mut entity_commands = commands.spawn((
-        DespawnOnExit(GameState::Playing),
+        DespawnOnExit(GameState::GameEnd),
         Camel { color },
         BoardPosition {
             space_index,
@@ -457,7 +457,7 @@ fn spawn_crazy_camel(
     // Parent entity with game logic components
     // Crazy camels face right (same as racing camels) but move backwards on the track
     let mut entity_commands = commands.spawn((
-        DespawnOnExit(GameState::Playing),
+        DespawnOnExit(GameState::GameEnd),
         CrazyCamel { color },
         BoardPosition {
             space_index,
@@ -500,7 +500,7 @@ fn spawn_dice_tent(commands: &mut Commands, position: Vec3, tent_index: usize) {
     // Parent tent entity
     commands
         .spawn((
-            DespawnOnExit(GameState::Playing),
+            DespawnOnExit(GameState::GameEnd),
             DiceTent { index: tent_index },
             Transform::from_translation(position),
             Visibility::default(),
@@ -697,7 +697,7 @@ fn spawn_pyramid_button(
     // Parent pyramid entity with clickable marker
     commands
         .spawn((
-            DespawnOnExit(GameState::Playing),
+            DespawnOnExit(GameState::GameEnd),
             PyramidRollButton,
             Transform::from_translation(position),
             Visibility::default(),
@@ -892,7 +892,7 @@ fn spawn_setup_instructions(commands: &mut Commands, asset_server: &Res<AssetSer
     // Create arrow pointing UP to pyramid using simple rectangles
     // Arrow shaft (vertical line)
     commands.spawn((
-        DespawnOnExit(GameState::Playing),
+        DespawnOnExit(GameState::GameEnd),
         board::SetupArrow,
         Sprite {
             color: gold_color,
@@ -904,7 +904,7 @@ fn spawn_setup_instructions(commands: &mut Commands, asset_server: &Res<AssetSer
 
     // Arrow head - left diagonal (pointing UP, offset to the left)
     commands.spawn((
-        DespawnOnExit(GameState::Playing),
+        DespawnOnExit(GameState::GameEnd),
         board::SetupArrow,
         Sprite {
             color: gold_color,
@@ -917,7 +917,7 @@ fn spawn_setup_instructions(commands: &mut Commands, asset_server: &Res<AssetSer
 
     // Arrow head - right diagonal (pointing UP, offset to the right)
     commands.spawn((
-        DespawnOnExit(GameState::Playing),
+        DespawnOnExit(GameState::GameEnd),
         board::SetupArrow,
         Sprite {
             color: gold_color,
@@ -930,7 +930,7 @@ fn spawn_setup_instructions(commands: &mut Commands, asset_server: &Res<AssetSer
 
     // Spawn "Set up camels" text
     commands.spawn((
-        DespawnOnExit(GameState::Playing),
+        DespawnOnExit(GameState::GameEnd),
         board::SetupText,
         Text2d::new("Set up camels"),
         TextFont {
@@ -954,7 +954,7 @@ fn spawn_start_game_button(
 
     // Spawn "Start Game" text button (initially hidden)
     commands.spawn((
-        DespawnOnExit(GameState::Playing),
+        DespawnOnExit(GameState::GameEnd),
         board::StartGameButton,
         board::StartGameButtonText,
         Text2d::new("Start Game"),
@@ -1254,7 +1254,7 @@ pub fn setup_game(
 }
 
 /// Clean up game resources when leaving the Playing state.
-/// Note: Game entities are automatically despawned by DespawnOnExit(GameState::Playing).
+/// Note: Game entities are automatically despawned by DespawnOnExit(GameState::GameEnd).
 pub fn cleanup_game(
     mut commands: Commands,
     mut ui_state: ResMut<crate::ui::hud::UiState>,
