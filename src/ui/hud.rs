@@ -1068,6 +1068,14 @@ pub struct UiState {
     pub show_debug_overlay: bool,                // Show debug overlay with window dimensions
 }
 
+/// Animation phase for camel position entry
+#[derive(Clone, Copy, PartialEq)]
+pub enum CamelAnimationPhase {
+    ScalingIn,    // New camel scaling from 0 width to full width
+    Reordering,   // Camel swapping positions after scale-in
+    Idle,         // No animation
+}
+
 /// Animated position entry for the camel positions panel
 #[derive(Clone, Copy)]
 pub struct AnimatedCamelPosition {
@@ -1076,6 +1084,8 @@ pub struct AnimatedCamelPosition {
     pub target_y_offset: f32,  // Target Y position (0 = at rank position)
     pub current_podium_y: f32, // Current vertical offset for podium (negative = up)
     pub target_podium_y: f32,  // Target vertical offset for podium
+    pub current_width_scale: f32, // 0.0 to 1.0 for scale-in animation
+    pub phase: CamelAnimationPhase, // Current animation phase
 }
 
 /// Resource for tracking camel position animations in UI
@@ -1762,7 +1772,7 @@ fn render_mobile_ui(
 
                         let last_place_rank = camel_count - 1;
 
-                        for (i, (color, x_offset, _)) in
+                        for (i, (color, x_offset, _, width_scale)) in
                             sorted_camels.iter().rev().enumerate()
                         {
                             let rank = camel_count - 1 - i; // 0 = 1st place
@@ -1773,32 +1783,40 @@ fn render_mobile_ui(
                                 (camel_egui_color.b() as f32 * 0.5) as u8,
                             );
 
+                            // Animate width during scale-in
+                            let animated_width = camel_w * width_scale;
+
                             let (rect, _) = ui.allocate_exact_size(
-                                egui::vec2(camel_w, camel_h),
+                                egui::vec2(animated_width, camel_h),
                                 egui::Sense::hover(),
                             );
 
-                            // Draw Camel
+                            // Draw Camel with animated width
                             let animated_rect = egui::Rect::from_center_size(
                                 egui::pos2(rect.center().x + *x_offset * 0.5, rect.center().y),
-                                egui::vec2(camel_w - 4.0, camel_h),
+                                egui::vec2((camel_w - 4.0) * width_scale, camel_h),
                             );
 
-                            draw_camel_silhouette(
-                                ui.painter(),
-                                animated_rect,
-                                camel_egui_color,
-                                border_color,
-                            );
+                            // Only draw if width is visible
+                            if *width_scale > 0.01 {
+                                draw_camel_silhouette(
+                                    ui.painter(),
+                                    animated_rect,
+                                    camel_egui_color,
+                                    border_color,
+                                );
 
-                            // Draw Hats
-                            match rank {
-                                0 => draw_crown_overlay(ui.painter(), animated_rect),
-                                1 => draw_silver_crown_overlay(ui.painter(), animated_rect),
-                                r if r == last_place_rank => {
-                                    draw_dunce_cap_overlay(ui.painter(), animated_rect)
+                                // Draw Hats (only when fully scaled in)
+                                if *width_scale > 0.95 {
+                                    match rank {
+                                        0 => draw_crown_overlay(ui.painter(), animated_rect),
+                                        1 => draw_silver_crown_overlay(ui.painter(), animated_rect),
+                                        r if r == last_place_rank => {
+                                            draw_dunce_cap_overlay(ui.painter(), animated_rect)
+                                        }
+                                        _ => {}
+                                    }
                                 }
-                                _ => {}
                             }
                         }
                     });
@@ -2088,8 +2106,8 @@ fn render_mobile_ui(
 }
 
 /// Get sorted camels from animation state in current race ranking order
-/// Returns (color, x_offset, podium_y_offset) for each camel
-fn get_sorted_camels(camel_animations: &CamelPositionAnimations) -> Vec<(CamelColor, f32, f32)> {
+/// Returns (color, x_offset, podium_y_offset, width_scale) for each camel
+fn get_sorted_camels(camel_animations: &CamelPositionAnimations) -> Vec<(CamelColor, f32, f32, f32)> {
     // Use last_order which contains the current race ranking (1st place first)
     camel_animations
         .last_order
@@ -2101,7 +2119,8 @@ fn get_sorted_camels(camel_animations: &CamelPositionAnimations) -> Vec<(CamelCo
                 .find(|anim| anim.color == color);
             let x_offset = anim.map(|a| a.current_y_offset).unwrap_or(0.0);
             let podium_y = anim.map(|a| a.current_podium_y).unwrap_or(0.0);
-            (color, x_offset, podium_y)
+            let width_scale = anim.map(|a| a.current_width_scale).unwrap_or(1.0);
+            (color, x_offset, podium_y, width_scale)
         })
         .collect()
 }
@@ -3491,6 +3510,7 @@ pub fn update_dice_popup_timer(time: Res<Time>, mut ui_state: ResMut<UiState>) {
 const CAMEL_POSITION_ROW_HEIGHT: f32 = 46.0; // row height including spacing
 const CAMEL_POSITION_ANIMATION_SPEED: f32 = 8.0; // How fast positions animate
 const PODIUM_ANIMATION_SPEED: f32 = 6.0; // How fast podium hop animates
+const CAMEL_SCALE_IN_SPEED: f32 = 10.0; // How fast new camels scale in (0 to 1 in 0.1s)
 
 /// Podium heights for standings display
 pub const GOLD_PODIUM_HEIGHT: f32 = 10.0; // 1st place podium (twice silver)
@@ -3531,30 +3551,29 @@ pub fn update_camel_position_animations(
             let anim = animations.positions.iter_mut().find(|a| a.color == color);
 
             if let Some(anim) = anim {
-                if let Some(old_rank) = old_rank {
-                    // Set current offset to where the camel appears to be coming from
-                    let rank_difference = new_rank as i32 - old_rank as i32;
-                    anim.current_y_offset = -rank_difference as f32 * CAMEL_POSITION_ROW_HEIGHT;
+                // Existing camel - only update position if not currently scaling in
+                if anim.phase != CamelAnimationPhase::ScalingIn {
+                    if let Some(old_rank) = old_rank {
+                        // Set current offset to where the camel appears to be coming from
+                        let rank_difference = new_rank as i32 - old_rank as i32;
+                        anim.current_y_offset = -rank_difference as f32 * CAMEL_POSITION_ROW_HEIGHT;
+                    }
+                    anim.target_y_offset = 0.0;
+                    anim.phase = CamelAnimationPhase::Reordering;
                 }
-                anim.target_y_offset = 0.0;
                 anim.target_podium_y = target_podium;
             } else {
-                // New camel - add animation entry
-                let initial_offset = if let Some(old_rank) = old_rank {
-                    let rank_difference = new_rank as i32 - old_rank as i32;
-                    -rank_difference as f32 * CAMEL_POSITION_ROW_HEIGHT
-                } else {
-                    // Brand new camel entering the race - start at the back (leftmost position)
-                    // This makes it spawn at the "end" and animate swapping right to its correct position
-                    let num_existing_camels = animations.last_order.len();
-                    (new_rank as i32 - num_existing_camels as i32) as f32 * CAMEL_POSITION_ROW_HEIGHT
-                };
+                // Brand new camel entering the race
+                // Phase 1: Start at leftmost with width 0, scale in
+                // Offset doesn't matter during scale-in since it will be at leftmost anyway
                 animations.positions.push(AnimatedCamelPosition {
                     color,
-                    current_y_offset: initial_offset,
+                    current_y_offset: 0.0,
                     target_y_offset: 0.0,
-                    current_podium_y: target_podium, // Start at target for new camels
+                    current_podium_y: target_podium,
                     target_podium_y: target_podium,
+                    current_width_scale: 0.0, // Start with 0 width
+                    phase: CamelAnimationPhase::ScalingIn,
                 });
             }
         }
@@ -3578,30 +3597,62 @@ pub fn update_camel_position_animations(
         }
     }
 
-    // Animate offsets towards targets
+    // Animate based on phase
     let dt = time.delta_secs();
-    for anim in &mut animations.positions {
-        // Animate horizontal slide
-        if (anim.current_y_offset - anim.target_y_offset).abs() > 0.1 {
-            let direction = if anim.current_y_offset < anim.target_y_offset {
-                1.0
-            } else {
-                -1.0
-            };
-            let step = CAMEL_POSITION_ANIMATION_SPEED * dt * CAMEL_POSITION_ROW_HEIGHT;
-            anim.current_y_offset += direction * step;
 
-            // Clamp to target if we overshoot
-            if direction > 0.0 && anim.current_y_offset > anim.target_y_offset {
-                anim.current_y_offset = anim.target_y_offset;
-            } else if direction < 0.0 && anim.current_y_offset < anim.target_y_offset {
-                anim.current_y_offset = anim.target_y_offset;
+    // Check if any camels are scaling in
+    let any_scaling = animations.positions.iter().any(|a| a.phase == CamelAnimationPhase::ScalingIn);
+
+    for anim in &mut animations.positions {
+        match anim.phase {
+            CamelAnimationPhase::ScalingIn => {
+                // Phase 1: Scale in from 0 to 1
+                anim.current_width_scale += CAMEL_SCALE_IN_SPEED * dt;
+                if anim.current_width_scale >= 1.0 {
+                    anim.current_width_scale = 1.0;
+                    // Transition to reordering phase
+                    // Calculate where this camel needs to go
+                    if let Some(target_rank) = current_order.iter().position(|&c| c == anim.color) {
+                        let num_existing = animations.positions.len();
+                        // Start from leftmost position (last place position)
+                        anim.current_y_offset = (target_rank as i32 - (num_existing - 1) as i32) as f32 * CAMEL_POSITION_ROW_HEIGHT;
+                        anim.target_y_offset = 0.0;
+                    }
+                    anim.phase = CamelAnimationPhase::Reordering;
+                }
             }
-        } else {
-            anim.current_y_offset = anim.target_y_offset;
+            CamelAnimationPhase::Reordering => {
+                // Phase 2: Animate position swapping (only if no camels are scaling in)
+                if !any_scaling {
+                    // Animate horizontal slide
+                    if (anim.current_y_offset - anim.target_y_offset).abs() > 0.1 {
+                        let direction = if anim.current_y_offset < anim.target_y_offset {
+                            1.0
+                        } else {
+                            -1.0
+                        };
+                        let step = CAMEL_POSITION_ANIMATION_SPEED * dt * CAMEL_POSITION_ROW_HEIGHT;
+                        anim.current_y_offset += direction * step;
+
+                        // Clamp to target if we overshoot
+                        if direction > 0.0 && anim.current_y_offset > anim.target_y_offset {
+                            anim.current_y_offset = anim.target_y_offset;
+                        } else if direction < 0.0 && anim.current_y_offset < anim.target_y_offset {
+                            anim.current_y_offset = anim.target_y_offset;
+                        }
+                    } else {
+                        anim.current_y_offset = anim.target_y_offset;
+                        anim.phase = CamelAnimationPhase::Idle;
+                    }
+                }
+            }
+            CamelAnimationPhase::Idle => {
+                // Ensure width is at 1.0
+                anim.current_width_scale = 1.0;
+            }
         }
 
-        // Animate podium hop (vertical)
+        // Animate podium hop (vertical) - always active
         if (anim.current_podium_y - anim.target_podium_y).abs() > 0.1 {
             let direction = if anim.current_podium_y < anim.target_podium_y {
                 1.0
