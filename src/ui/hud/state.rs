@@ -63,6 +63,7 @@ pub struct UiState {
     pub dice_popup_timer: f32,          // Timer for dice result popup fade
     pub show_leg_scoring: bool,         // Show leg scoring modal
     pub show_rules: bool,               // Show game rules modal
+    pub camel_rolls_complete: bool,     // Whether camel setup rolls have finished (waiting for Start Game)
     pub initial_rolls_complete: bool,   // Whether initial setup rolls have finished
     pub exit_fullscreen_requested: bool, // Request to exit fullscreen mode
     pub enter_fullscreen_requested: bool, // Request to enter fullscreen mode
@@ -93,6 +94,7 @@ impl Default for UiState {
             dice_popup_timer: 0.0,
             show_leg_scoring: false,
             show_rules: false,
+            camel_rolls_complete: false,
             initial_rolls_complete: false,
             exit_fullscreen_requested: false,
             enter_fullscreen_requested: false,

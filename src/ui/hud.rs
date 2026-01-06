@@ -1052,6 +1052,7 @@ pub struct UiState {
     pub leg_scoring_delay: f32, // Delay timer before showing leg scoring modal (800ms)
     pub game_end_delay: f32,   // Delay timer before transitioning to GameEnd state (800ms)
     pub show_rules: bool,      // Show game rules modal
+    pub camel_rolls_complete: bool,   // Whether camel setup rolls have finished (waiting for Start Game)
     pub initial_rolls_complete: bool, // Whether initial setup rolls have finished
     pub exit_fullscreen_requested: bool, // Request to exit fullscreen mode
     pub enter_fullscreen_requested: bool, // Request to enter fullscreen mode
@@ -1101,6 +1102,7 @@ impl Default for UiState {
             leg_scoring_delay: 0.0,
             game_end_delay: 0.0,
             show_rules: false,
+            camel_rolls_complete: false,
             initial_rolls_complete: false,
             exit_fullscreen_requested: false,
             enter_fullscreen_requested: false,
@@ -1612,22 +1614,27 @@ fn render_mobile_ui(
     let panel_response = egui::TopBottomPanel::top("mobile_info_panel")
         .frame(egui::Frame::new().fill(ctx.style().visuals.panel_fill))
         .show(ctx, |ui| {
+            // Constants for consistent styling
+            const CARD_MARGIN: f32 = 2.0;
+            const CARD_ROUNDING: f32 = 2.0;
+            const AVATAR_SIZE: f32 = 22.0;
+
             ui.add_space(2.0);
 
-            // Players section with adaptive row layout
+            // --- Players Section ---
             let player_count = players.players.len();
             let available_width = ui.available_width();
             let per_row = layout::players_per_row(player_count, available_width);
 
-            // Helper closure to draw a single player card
-            // Returns the avatar rect center if this is the current player (for animation targeting)
+            // Calculate exact card width: (Total - (Spaces between cards)) / Count
+            // We use outer_margin on frames, so we account for that in the width calculation
+            let card_width = (available_width / per_row as f32).floor();
+
+            // 1. Draw Player Card Closure
             let draw_player_card = |ui: &mut egui::Ui,
-                                    i: usize,
-                                    player: &crate::components::PlayerData,
-                                    card_width: f32|
+                                        i: usize,
+                                        player: &crate::components::PlayerData|
              -> Option<egui::Pos2> {
-                const MARGIN: f32 = 2.0;
-                ui.add_space(MARGIN);
                 let is_current = i == players.current_player_index;
                 let player_color = PLAYER_COLORS[player.color_index % PLAYER_COLORS.len()];
 
@@ -1637,219 +1644,166 @@ fn render_mobile_ui(
                     egui::Color32::from_rgb(35, 35, 40)
                 };
 
+                // Use outer_margin for spacing between cards (replaces ui.add_space)
                 let frame = egui::Frame::new()
                     .fill(bg_color)
-                    .corner_radius(egui::CornerRadius::same(3))
-                    .inner_margin(egui::Margin::same(3));
+                    .corner_radius(CARD_ROUNDING)
+                    .inner_margin(3.0)
+                    .outer_margin(CARD_MARGIN);
 
                 let mut current_player_pos = None;
+
                 frame.show(ui, |ui| {
-                    ui.set_width(card_width - MARGIN * 10.0);
+                    // Force width to ensure uniform cards
+                    // We subtract outer_margin * 2 because the allocated rect includes the outer margin
+                    ui.set_width(card_width - (CARD_MARGIN * 2.0));
+
                     ui.horizontal(|ui| {
                         // Avatar
-                        let avatar_size = 22.0;
                         let (rect, _) = ui.allocate_exact_size(
-                            egui::vec2(avatar_size, avatar_size),
+                            egui::vec2(AVATAR_SIZE, AVATAR_SIZE),
                             egui::Sense::hover(),
                         );
                         draw_avatar(ui.painter(), rect, player.character_id, Some(player_color));
 
-                        // Track current player position for leg bet animation
                         if is_current {
                             current_player_pos = Some(rect.center());
                         }
 
+                        ui.add_space(4.0);
+
                         // Money
                         ui.label(egui::RichText::new(format!("${}", player.money)).size(10.0));
 
-                        // Leg bet mini cards (overlapping)
-                        if i < player_leg_bets.bets.len() && !player_leg_bets.bets[i].is_empty() {
-                            let bets = &player_leg_bets.bets[i];
-                            draw_overlapping_stack(
-                                ui,
-                                bets,
-                                mobile::MINI_LEG_BET_WIDTH,
-                                mobile::MINI_LEG_BET_HEIGHT,
-                                mobile::MINI_LEG_BET_OVERLAP,
-                                |painter, rect, bet| {
-                                    draw_mini_leg_bet_indicator(
-                                        painter, rect, bet.camel, bet.value,
-                                    );
-                                },
-                            );
+                        // Leg Bets
+                        if let Some(bets) = player_leg_bets.bets.get(i) {
+                            if !bets.is_empty() {
+                                draw_overlapping_stack(
+                                    ui,
+                                    bets,
+                                    mobile::MINI_LEG_BET_WIDTH,
+                                    mobile::MINI_LEG_BET_HEIGHT,
+                                    mobile::MINI_LEG_BET_OVERLAP,
+                                    |painter, rect, bet| {
+                                        draw_mini_leg_bet_indicator(
+                                            painter, rect, bet.camel, bet.value,
+                                        );
+                                    },
+                                );
+                            }
                         }
 
-                        // Pyramid tokens (compact)
-                        if i < player_pyramid_tokens.counts.len()
-                            && player_pyramid_tokens.counts[i] > 0
-                        {
-                            let token_count = player_pyramid_tokens.counts[i] as usize;
-                            draw_spaced_row(
-                                ui,
-                                token_count,
-                                mobile::PYRAMID_TOKEN_SIZE,
-                                mobile::PYRAMID_TOKEN_SPACING,
-                                |painter, center, _| {
-                                    draw_pyramid_token_icon(
-                                        painter,
-                                        center,
-                                        mobile::PYRAMID_TOKEN_SIZE,
-                                    );
-                                },
-                            );
+                        // Pyramid Tokens
+                        if let Some(&count) = player_pyramid_tokens.counts.get(i) {
+                            if count > 0 {
+                                draw_spaced_row(
+                                    ui,
+                                    count as usize,
+                                    mobile::PYRAMID_TOKEN_SIZE,
+                                    mobile::PYRAMID_TOKEN_SPACING,
+                                    |painter, center, _| {
+                                        draw_pyramid_token_icon(
+                                            painter,
+                                            center,
+                                            mobile::PYRAMID_TOKEN_SIZE,
+                                        );
+                                    },
+                                );
+                            }
                         }
                     });
                 });
-                ui.add_space(MARGIN);
+
                 current_player_pos
             };
 
-            // Calculate card width based on available space
-            let available_width = ui.available_width();
-            let card_width = (available_width / per_row as f32).floor();
-
-            // Draw all players in rows
+            // 2. Render Rows
             for row_start in (0..player_count).step_by(per_row) {
-                ui.add_space(2.0); // top
-                ui.horizontal(|ui| {
+                // FIX: Use horizontal_top to prevent "staircase" bug where successive elements drop down
+                ui.horizontal_top(|ui| {
+                    // Reset item spacing because we are handling it via Frame outer_margin
+                    ui.spacing_mut().item_spacing.x = 0.0;
+
                     let row_end = (row_start + per_row).min(player_count);
                     for i in row_start..row_end {
-                        if let Some(pos) = draw_player_card(ui, i, &players.players[i], card_width)
-                        {
+                        if let Some(pos) = draw_player_card(ui, i, &players.players[i]) {
                             ui_state.player_bet_area_pos = Some(pos);
                         }
                     }
                 });
-                ui.add_space(2.0);
             }
 
             ui.separator();
             ui.add_space(2.0);
 
-            // Camel Standings Row (right-to-left: 1st place on right, last on left)
+            // --- Camel Standings Section ---
             let sorted_camels = get_sorted_camels(camel_animations);
             let camel_count = sorted_camels.len();
 
             if camel_count > 0 {
-                let camel_display_width = 32.0;
-                let camel_display_height = 24.0;
-                let label_width = 50.0; // Space for "Current\nStandings" label
-                let podium_extra_height = GOLD_PODIUM_HEIGHT + 4.0; // Extra space for podiums
-                let total_camels_width = camel_display_width * sorted_camels.len() as f32;
-                let camels_start_x = (ui.available_width() - total_camels_width) / 2.0;
+                let camel_w = 32.0;
+                let camel_h = 24.0;
 
-                ui.horizontal(|ui| {
-                    // "Current Standings" label on the left edge
-                    let (label_rect, _) = ui.allocate_exact_size(
-                        egui::vec2(label_width, camel_display_height + podium_extra_height),
-                        egui::Sense::hover(),
-                    );
-                    ui.add_space(4.0);
-                    ui.painter().text(
-                        label_rect.center(),
-                        egui::Align2::CENTER_CENTER,
-                        "Current\nStandings",
-                        egui::FontId::proportional(12.0),
-                        egui::Color32::from_rgb(120, 120, 120),
-                    );
+                ui.add_space(4.0);
 
-                    // Add space to center the camels (accounting for the label we just drew)
-                    let space_after_label = (camels_start_x - label_width).max(0.0);
-                    ui.add_space(space_after_label);
+                // Use vertical_centered to handle the centering logic automatically
+                ui.vertical_centered(|ui| {
+                    ui.horizontal(|ui| {
+                        // "Current Standings" Label
+                        let label_text = egui::RichText::new("Current\nStandings")
+                            .size(10.0)
+                            .color(egui::Color32::from_rgb(120, 120, 120));
+                        ui.label(label_text);
 
-                    // Reverse iteration: display last place on left, 1st place on right
-                    let last_place_rank = camel_count - 1;
-                    for (i, (color, x_offset, podium_y)) in sorted_camels.iter().rev().enumerate() {
-                        let rank = camel_count - 1 - i; // Actual rank (0 = 1st place)
-                        let camel_egui_color = camel_color_to_egui(*color);
-                        let border_color = egui::Color32::from_rgb(
-                            (camel_egui_color.r() as f32 * 0.5) as u8,
-                            (camel_egui_color.g() as f32 * 0.5) as u8,
-                            (camel_egui_color.b() as f32 * 0.5) as u8,
-                        );
+                        ui.add_space(8.0); // Spacing between label and camels
 
-                        let (rect, _) = ui.allocate_exact_size(
-                            egui::vec2(
-                                camel_display_width,
-                                camel_display_height + podium_extra_height,
-                            ),
-                            egui::Sense::hover(),
-                        );
+                        // Draw Camels (Right-to-Left logic: 1st place is last in this loop)
+                        // Assuming standard left-to-right drawing: Last Place -> ... -> 1st Place
 
-                        // Base position for camel (bottom of allocated space)
-                        let base_y = rect.bottom() - camel_display_height * 0.5;
+                        let last_place_rank = camel_count - 1;
 
-                        // Draw podium step if 1st or 2nd place
-                        // Camel bottom is at base_y + camel_display_height * 0.5, podium bottom should match
-                        let camel_bottom = base_y + camel_display_height * 0.5;
-                        if rank == 0 {
-                            // Gold podium (taller)
-                            let podium_height = GOLD_PODIUM_HEIGHT;
-                            let podium_rect = egui::Rect::from_min_size(
-                                egui::pos2(rect.left() + 2.0, camel_bottom - podium_height),
-                                egui::vec2(camel_display_width - 4.0, podium_height),
+                        for (i, (color, x_offset, _)) in
+                            sorted_camels.iter().rev().enumerate()
+                        {
+                            let rank = camel_count - 1 - i; // 0 = 1st place
+                            let camel_egui_color = camel_color_to_egui(*color);
+                            let border_color = egui::Color32::from_rgb(
+                                (camel_egui_color.r() as f32 * 0.5) as u8,
+                                (camel_egui_color.g() as f32 * 0.5) as u8,
+                                (camel_egui_color.b() as f32 * 0.5) as u8,
                             );
-                            // Gold colors
-                            ui.painter().rect_filled(
-                                podium_rect,
-                                1.0,
-                                egui::Color32::from_rgb(255, 215, 0),
+
+                            let (rect, _) = ui.allocate_exact_size(
+                                egui::vec2(camel_w, camel_h),
+                                egui::Sense::hover(),
                             );
-                            ui.painter().rect_stroke(
-                                podium_rect,
-                                1.0,
-                                egui::Stroke::new(1.0, egui::Color32::from_rgb(200, 160, 0)),
-                                egui::epaint::StrokeKind::Outside,
+
+                            // Draw Camel
+                            let animated_rect = egui::Rect::from_center_size(
+                                egui::pos2(rect.center().x + *x_offset * 0.5, rect.center().y),
+                                egui::vec2(camel_w - 4.0, camel_h),
                             );
-                        } else if rank == 1 {
-                            // Silver podium (shorter)
-                            let podium_height = SILVER_PODIUM_HEIGHT;
-                            let podium_rect = egui::Rect::from_min_size(
-                                egui::pos2(rect.left() + 2.0, camel_bottom - podium_height),
-                                egui::vec2(camel_display_width - 4.0, podium_height),
+
+                            draw_camel_silhouette(
+                                ui.painter(),
+                                animated_rect,
+                                camel_egui_color,
+                                border_color,
                             );
-                            // Silver colors
-                            ui.painter().rect_filled(
-                                podium_rect,
-                                1.0,
-                                egui::Color32::from_rgb(192, 192, 200),
-                            );
-                            ui.painter().rect_stroke(
-                                podium_rect,
-                                1.0,
-                                egui::Stroke::new(1.0, egui::Color32::from_rgb(140, 140, 150)),
-                                egui::epaint::StrokeKind::Outside,
-                            );
+
+                            // Draw Hats
+                            match rank {
+                                0 => draw_crown_overlay(ui.painter(), animated_rect),
+                                1 => draw_silver_crown_overlay(ui.painter(), animated_rect),
+                                r if r == last_place_rank => {
+                                    draw_dunce_cap_overlay(ui.painter(), animated_rect)
+                                }
+                                _ => {}
+                            }
                         }
-
-                        // Camel rect with animated podium offset (podium_y is negative when on podium)
-                        let animated_rect = egui::Rect::from_center_size(
-                            egui::pos2(rect.center().x + *x_offset * 0.5, base_y + *podium_y),
-                            egui::vec2(camel_display_width - 4.0, camel_display_height),
-                        );
-
-                        draw_camel_silhouette(
-                            ui.painter(),
-                            animated_rect,
-                            camel_egui_color,
-                            border_color,
-                        );
-
-                        // Rank indicators with hats instead of pills
-                        if rank == 0 {
-                            // 1st place: Gold crown
-                            draw_crown_overlay(ui.painter(), animated_rect);
-                        } else if rank == 1 {
-                            // 2nd place: Silver crown
-                            draw_silver_crown_overlay(ui.painter(), animated_rect);
-                        } else if rank == last_place_rank {
-                            // Last place: Dunce cap
-                            draw_dunce_cap_overlay(ui.painter(), animated_rect);
-                        }
-                    }
+                    });
                 });
             }
-
             ui.add_space(2.0);
         });
 

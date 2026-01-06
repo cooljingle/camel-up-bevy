@@ -75,7 +75,7 @@ impl Default for PlayerSetupConfig {
     fn default() -> Self {
         // Create shuffled character IDs so each game starts with random characters
         let mut rng = rand::thread_rng();
-        let mut character_ids: Vec<CharacterId> = (0..8)
+        let mut character_ids: Vec<CharacterId> = (0..16)
             .map(CharacterId::from_index)
             .collect();
         character_ids.shuffle(&mut rng);
@@ -130,7 +130,7 @@ impl PlayerSetupConfig {
         if self.players.len() < Self::MAX_PLAYERS {
             // Find an unused character
             let used: HashSet<CharacterId> = self.players.iter().map(|p| p.character_id).collect();
-            let available = (0..8)
+            let available = (0..16)
                 .map(CharacterId::from_index)
                 .find(|c| !used.contains(c))
                 .unwrap_or(CharacterId::default());

@@ -143,8 +143,11 @@ pub struct SetupArrow;
 #[derive(Component)]
 pub struct SetupText;
 
-/// Animation state for pyramid pulse during setup
+/// Marker component for the Start Game button
 #[derive(Component)]
-pub struct PyramidSetupPulseAnimation {
-    pub elapsed: f32,
-}
+pub struct StartGameButton;
+
+/// Marker component for the Start Game button text
+#[derive(Component)]
+pub struct StartGameButtonText;
+

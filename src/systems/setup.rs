@@ -880,55 +880,52 @@ fn spawn_gold_coin(
     ));
 }
 
-/// Spawn the setup arrow and text above the pyramid
-fn spawn_setup_instructions(
-    commands: &mut Commands,
-    asset_server: &Res<AssetServer>,
-) {
-    let arrow_y = PYRAMID_Y_POSITION + PYRAMID_SIZE / 2.0 + 45.0;
-    let text_y = arrow_y + 35.0;
-    let text_color = Color::srgb(0.42, 0.29, 0.10); // #6B4A1A (gold outline color)
+/// Spawn the setup arrow and text below the pyramid
+fn spawn_setup_instructions(commands: &mut Commands, asset_server: &Res<AssetServer>) {
+    let arrow_y = PYRAMID_Y_POSITION - PYRAMID_SIZE / 2.0 - 45.0;
+    let text_y = arrow_y - 35.0;
+    let gold_color = Color::srgb(0.85, 0.65, 0.13); // Gold color
 
     // Load Aleo font
     let font = asset_server.load("fonts/Aleo-Variable.ttf");
 
-    // Create arrow pointing down to pyramid using simple rectangles
+    // Create arrow pointing UP to pyramid using simple rectangles
     // Arrow shaft (vertical line)
     commands.spawn((
         DespawnOnExit(GameState::Playing),
         board::SetupArrow,
         Sprite {
-            color: text_color,
+            color: gold_color,
             custom_size: Some(Vec2::new(4.0, 25.0)),
             ..default()
         },
         Transform::from_xyz(0.0, arrow_y, PYRAMID_BASE_Z + 1.0),
     ));
 
-    // Arrow head - left diagonal
+    // Arrow head - left diagonal (pointing UP, offset to the left)
     commands.spawn((
         DespawnOnExit(GameState::Playing),
         board::SetupArrow,
         Sprite {
-            color: text_color,
-            custom_size: Some(Vec2::new(20.0, 4.0)),
+            color: gold_color,
+            custom_size: Some(Vec2::new(15.0, 4.0)),
             ..default()
         },
-        Transform::from_xyz(0.0, arrow_y - 12.5, PYRAMID_BASE_Z + 1.0)
-            .with_rotation(Quat::from_rotation_z(-std::f32::consts::FRAC_PI_4)),
+        Transform::from_xyz(-5.0, arrow_y + 17.0, PYRAMID_BASE_Z + 1.0)
+            .with_rotation(Quat::from_rotation_z(std::f32::consts::FRAC_PI_4)),
     ));
 
-    // Arrow head - right diagonal
+    // Arrow head - right diagonal (pointing UP, offset to the right)
     commands.spawn((
         DespawnOnExit(GameState::Playing),
         board::SetupArrow,
         Sprite {
-            color: text_color,
-            custom_size: Some(Vec2::new(20.0, 4.0)),
+            color: gold_color,
+            custom_size: Some(Vec2::new(15.0, 4.0)),
             ..default()
         },
-        Transform::from_xyz(0.0, arrow_y - 12.5, PYRAMID_BASE_Z + 1.0)
-            .with_rotation(Quat::from_rotation_z(std::f32::consts::FRAC_PI_4)),
+        Transform::from_xyz(5.0, arrow_y + 17.0, PYRAMID_BASE_Z + 1.0)
+            .with_rotation(Quat::from_rotation_z(-std::f32::consts::FRAC_PI_4)),
     ));
 
     // Spawn "Set up camels" text
@@ -938,11 +935,37 @@ fn spawn_setup_instructions(
         Text2d::new("Set up camels"),
         TextFont {
             font: font.clone(),
-            font_size: 28.0,
+            font_size: 48.0,
             ..default()
         },
-        TextColor(text_color),
+        TextColor(gold_color),
         Transform::from_xyz(0.0, text_y, PYRAMID_BASE_Z + 1.0),
+    ));
+}
+
+/// Spawn the Start Game button (initially hidden)
+fn spawn_start_game_button(
+    commands: &mut Commands,
+    asset_server: &Res<AssetServer>,
+) {
+    let button_y = PYRAMID_Y_POSITION - PYRAMID_SIZE / 2.0 - 60.0;
+    let gold_color = Color::srgb(0.85, 0.65, 0.13);
+    let font = asset_server.load("fonts/Aleo-Variable.ttf");
+
+    // Spawn "Start Game" text button (initially hidden)
+    commands.spawn((
+        DespawnOnExit(GameState::Playing),
+        board::StartGameButton,
+        board::StartGameButtonText,
+        Text2d::new("Start Game"),
+        TextFont {
+            font: font.clone(),
+            font_size: 32.0,
+            ..default()
+        },
+        TextColor(gold_color),
+        Transform::from_xyz(0.0, button_y, PYRAMID_BASE_Z + 1.0),
+        Visibility::Hidden,
     ));
 }
 
@@ -966,11 +989,11 @@ impl InitialRollCamel {
 #[derive(Resource, Default)]
 pub struct InitialSetupRolls {
     pub camel_rolls: Vec<(InitialRollCamel, u8, u8, u8, Vec3)>, // (camel type, roll value, space_index, stack_pos, target position)
-    pub current_roll_index: usize,                      // Which roll is currently animating
-    pub all_complete: bool,                             // All rolls have been shown
-    pub current_dice_spawned: bool,                     // Whether dice for current roll was spawned
+    pub current_roll_index: usize,                              // Which roll is currently animating
+    pub all_complete: bool,                                     // All rolls have been shown
+    pub current_dice_spawned: bool, // Whether dice for current roll was spawned
     pub current_camel_moving: bool, // Whether camel for current roll has started moving
-    pub started: bool,              // Whether the player has clicked the "Set up camels" button
+    pub waiting_for_click: bool,    // Whether we're waiting for a click to start the next roll
     pub placed_camels: Vec<(u8, u8)>, // (space_index, stack_pos) for camels that finished moving
 }
 
@@ -991,7 +1014,7 @@ fn generate_initial_waypoints_racing(
     staging_pos: Vec3,
     target_space: u8,
     target_stack_pos: u8,
-    placed_camels: &[(u8, u8)],  // (space_index, stack_pos) for already-placed camels
+    placed_camels: &[(u8, u8)], // (space_index, stack_pos) for already-placed camels
 ) -> Vec<Vec3> {
     let mut waypoints = vec![staging_pos];
 
@@ -1001,7 +1024,7 @@ fn generate_initial_waypoints_racing(
 
         // Calculate stack height at this space
         let stack_height = if space == target_space {
-            target_stack_pos  // Final position uses calculated stack pos
+            target_stack_pos // Final position uses calculated stack pos
         } else {
             // Intermediate spaces: hop to top of existing camels
             placed_camels.iter().filter(|(s, _)| *s == space).count() as u8
@@ -1020,13 +1043,13 @@ fn generate_initial_waypoints_crazy(
     staging_pos: Vec3,
     target_space: u8,
     target_stack_pos: u8,
-    placed_camels: &[(u8, u8)],  // (space_index, stack_pos) for already-placed camels
+    placed_camels: &[(u8, u8)], // (space_index, stack_pos) for already-placed camels
 ) -> Vec<Vec3> {
     let mut waypoints = vec![staging_pos];
 
     // Crazy camels start near finish (space 15) and hop backwards to their target
     // They hop from space 15 down to target_space
-    let start_space = 15u8;  // Finish line area
+    let start_space = 15u8; // Finish line area
     let mut current = start_space;
 
     loop {
@@ -1034,7 +1057,7 @@ fn generate_initial_waypoints_crazy(
 
         // Calculate stack height at this space
         let stack_height = if current == target_space {
-            target_stack_pos  // Final position uses calculated stack pos
+            target_stack_pos // Final position uses calculated stack pos
         } else {
             // Intermediate spaces: hop to top of existing camels
             placed_camels.iter().filter(|(s, _)| *s == current).count() as u8
@@ -1096,6 +1119,7 @@ pub fn setup_game(
     let mut rng = rand::thread_rng();
     let mut camel_positions: Vec<(u8, u8)> = Vec::new(); // (space_index, stack_pos)
     let mut initial_rolls = InitialSetupRolls::default();
+    initial_rolls.waiting_for_click = true; // Require click for first roll
 
     let mut racing_order: Vec<CamelColor> = CamelColor::all().into();
     racing_order.shuffle(&mut rng);
@@ -1123,9 +1147,13 @@ pub fn setup_game(
         );
 
         // Record the roll and target position for animation
-        initial_rolls
-            .camel_rolls
-            .push((InitialRollCamel::Racing(color), roll_value, space_index, stack_pos, target_pos));
+        initial_rolls.camel_rolls.push((
+            InitialRollCamel::Racing(color),
+            roll_value,
+            space_index,
+            stack_pos,
+            target_pos,
+        ));
 
         // Spawn camels at staging position (staggered vertically so they're visible)
         let staging_pos = Vec3::new(
@@ -1219,6 +1247,9 @@ pub fn setup_game(
     // Spawn setup instructions (arrow and text)
     spawn_setup_instructions(&mut commands, &asset_server);
 
+    // Spawn start game button (initially hidden)
+    spawn_start_game_button(&mut commands, &asset_server);
+
     info!("Game setup complete!");
 }
 
@@ -1258,17 +1289,41 @@ pub fn cleanup_game(
     info!("Game cleanup complete!");
 }
 
-/// System to hide setup instructions when initial rolls are complete
+/// System to manage setup UI visibility (arrow/text -> Start Game button)
 pub fn hide_setup_instructions_system(
     ui_state: Res<crate::ui::hud::UiState>,
-    mut arrow_query: Query<&mut Visibility, (With<board::SetupArrow>, Without<board::SetupText>)>,
-    mut text_query: Query<&mut Visibility, (With<board::SetupText>, Without<board::SetupArrow>)>,
+    mut arrow_query: Query<
+        &mut Visibility,
+        (With<board::SetupArrow>, Without<board::SetupText>, Without<board::StartGameButton>),
+    >,
+    mut text_query: Query<
+        &mut Visibility,
+        (With<board::SetupText>, Without<board::SetupArrow>, Without<board::StartGameButton>),
+    >,
+    mut button_query: Query<
+        &mut Visibility,
+        (With<board::StartGameButton>, Without<board::SetupArrow>, Without<board::SetupText>),
+    >,
 ) {
-    if ui_state.initial_rolls_complete {
+    // When camel rolls are complete, hide arrow/text and show Start Game button
+    if ui_state.camel_rolls_complete {
         for mut visibility in arrow_query.iter_mut() {
             *visibility = Visibility::Hidden;
         }
         for mut visibility in text_query.iter_mut() {
+            *visibility = Visibility::Hidden;
+        }
+        // Show button only if game hasn't started yet
+        if !ui_state.initial_rolls_complete {
+            for mut visibility in button_query.iter_mut() {
+                *visibility = Visibility::Visible;
+            }
+        }
+    }
+
+    // When game starts, hide the button too
+    if ui_state.initial_rolls_complete {
+        for mut visibility in button_query.iter_mut() {
             *visibility = Visibility::Hidden;
         }
     }
@@ -1302,25 +1357,25 @@ pub fn initial_roll_animation_system(
 ) {
     let Some(ref mut rolls) = initial_rolls else {
         // If no InitialSetupRolls resource, consider rolls complete
-        ui_state.initial_rolls_complete = true;
+        ui_state.camel_rolls_complete = true;
         return;
     };
 
     // Skip if all rolls are complete
     if rolls.all_complete {
-        ui_state.initial_rolls_complete = true;
+        ui_state.camel_rolls_complete = true;
         return;
     }
 
-    // Wait for player to click the "Set up camels" button
-    if !rolls.started {
+    // Wait for player to click the pyramid to start each roll
+    if rolls.waiting_for_click {
         return;
     }
 
     // Skip if no rolls to show
     if rolls.camel_rolls.is_empty() {
         rolls.all_complete = true;
-        ui_state.initial_rolls_complete = true;
+        ui_state.camel_rolls_complete = true;
         return;
     }
 
@@ -1340,8 +1395,12 @@ pub fn initial_roll_animation_system(
     // Start camel moving when dice enters settling phase
     // Also trigger if dice has already finished (despawned) but camel hasn't moved yet
     // This handles cases where the fast dice animation completes between frames
-    if rolls.current_dice_spawned && !rolls.current_camel_moving && (dice_in_display_or_later || dice_finished) {
-        let (camel_type, _value, space_index, stack_pos, _target_pos) = rolls.camel_rolls[rolls.current_roll_index];
+    if rolls.current_dice_spawned
+        && !rolls.current_camel_moving
+        && (dice_in_display_or_later || dice_finished)
+    {
+        let (camel_type, _value, space_index, stack_pos, _target_pos) =
+            rolls.camel_rolls[rolls.current_roll_index];
 
         // Find the camel and start its movement animation
         match camel_type {
@@ -1402,14 +1461,15 @@ pub fn initial_roll_animation_system(
         return;
     }
 
-    // If current roll is done, immediately advance to next (no delay for initial setup)
+    // If current roll is done, wait for next click to proceed
     if rolls.current_dice_spawned
         && rolls.current_camel_moving
         && !camel_still_moving
         && dice_finished
     {
         // Record this camel as placed for stack height calculations
-        let (_camel_type, _value, space_index, stack_pos, _target_pos) = rolls.camel_rolls[rolls.current_roll_index];
+        let (_camel_type, _value, space_index, stack_pos, _target_pos) =
+            rolls.camel_rolls[rolls.current_roll_index];
         rolls.placed_camels.push((space_index, stack_pos));
 
         rolls.current_roll_index += 1;
@@ -1419,15 +1479,20 @@ pub fn initial_roll_animation_system(
         // Check if all rolls are done
         if rolls.current_roll_index >= rolls.camel_rolls.len() {
             rolls.all_complete = true;
-            ui_state.initial_rolls_complete = true;
-            info!("All initial rolls complete!");
+            ui_state.camel_rolls_complete = true;
+            info!("All camel rolls complete! Waiting for Start Game.");
             return;
         }
+
+        // Wait for another click before the next roll
+        rolls.waiting_for_click = true;
+        return;
     }
 
     // If we haven't spawned the current dice yet, spawn it
     if !rolls.current_dice_spawned && rolls.current_roll_index < rolls.camel_rolls.len() {
-        let (camel_type, value, _space_index, _stack_pos, _target_pos) = rolls.camel_rolls[rolls.current_roll_index];
+        let (camel_type, value, _space_index, _stack_pos, _target_pos) =
+            rolls.camel_rolls[rolls.current_roll_index];
 
         // Spawn animated dice sprite in center of board
         let dice_pos = Vec3::new(0.0, 0.0, 100.0);

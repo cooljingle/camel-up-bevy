@@ -800,9 +800,10 @@ pub fn handle_pyramid_click(
     windows: Query<&Window>,
     camera_query: Query<(&Camera, &GlobalTransform), With<Camera2d>>,
     pyramid_query: Query<&GlobalTransform, With<PyramidRollButton>>,
+    start_button_query: Query<&GlobalTransform, With<crate::components::board::StartGameButton>>,
     mouse_input: Res<ButtonInput<MouseButton>>,
     touches: Res<Touches>,
-    ui_state: Res<UiState>,
+    mut ui_state: ResMut<UiState>,
     mut roll_action: MessageWriter<RollPyramidAction>,
     players: Option<Res<Players>>,
     turn_state: Res<TurnState>,
@@ -811,8 +812,46 @@ pub fn handle_pyramid_click(
     mut initial_rolls: Option<ResMut<crate::systems::setup::InitialSetupRolls>>,
     dice_query: Query<(), With<crate::systems::animation::DiceSprite>>,
 ) {
-    // === SETUP PHASE: Handle pyramid clicks during initial setup ===
+    // === SETUP PHASE: Handle clicks during initial setup ===
     if !ui_state.initial_rolls_complete {
+        // Get click/tap position
+        let click_pos = if mouse_input.just_pressed(MouseButton::Left) {
+            windows.single().ok().and_then(|w| w.cursor_position())
+        } else if let Some(touch) = touches.iter_just_pressed().next() {
+            Some(touch.position())
+        } else {
+            None
+        };
+
+        let Some(screen_pos) = click_pos else { return };
+        let Ok((camera, camera_transform)) = camera_query.single() else { return };
+
+        // Convert screen position to world position
+        let Ok(world_pos) = camera.viewport_to_world_2d(camera_transform, screen_pos) else { return };
+
+        // If camel rolls are complete, check for Start Game button click
+        if ui_state.camel_rolls_complete {
+            // Check if click is on Start Game button (use a reasonable hit area)
+            let button_half_size = Vec2::new(80.0, 20.0);
+
+            for transform in start_button_query.iter() {
+                let button_pos = transform.translation().truncate();
+                let min = button_pos - button_half_size;
+                let max = button_pos + button_half_size;
+
+                if world_pos.x >= min.x && world_pos.x <= max.x
+                    && world_pos.y >= min.y && world_pos.y <= max.y
+                {
+                    // Clicked on Start Game button - start the game!
+                    ui_state.initial_rolls_complete = true;
+                    info!("Start Game clicked! Beginning gameplay.");
+                    return;
+                }
+            }
+            return;
+        }
+
+        // Camel rolls not complete - handle pyramid clicks for rolling
         if let Some(ref mut rolls) = initial_rolls {
             // Don't allow click if dice is currently rolling
             if !dice_query.is_empty() {
@@ -823,21 +862,6 @@ pub fn handle_pyramid_click(
             if !shake_query.is_empty() {
                 return;
             }
-
-            // Get click/tap position
-            let click_pos = if mouse_input.just_pressed(MouseButton::Left) {
-                windows.single().ok().and_then(|w| w.cursor_position())
-            } else if let Some(touch) = touches.iter_just_pressed().next() {
-                Some(touch.position())
-            } else {
-                None
-            };
-
-            let Some(screen_pos) = click_pos else { return };
-            let Ok((camera, camera_transform)) = camera_query.single() else { return };
-
-            // Convert screen position to world position
-            let Ok(world_pos) = camera.viewport_to_world_2d(camera_transform, screen_pos) else { return };
 
             // Check if click is on pyramid
             let pyramid_size = Vec2::splat(PYRAMID_SIZE);
@@ -851,8 +875,8 @@ pub fn handle_pyramid_click(
                 if world_pos.x >= min.x && world_pos.x <= max.x
                     && world_pos.y >= min.y && world_pos.y <= max.y
                 {
-                    // Clicked on pyramid during setup - start the setup rolls!
-                    rolls.started = true;
+                    // Clicked on pyramid during setup - trigger the next roll!
+                    rolls.waiting_for_click = false;
                     return;
                 }
             }

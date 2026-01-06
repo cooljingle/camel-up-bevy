@@ -1012,15 +1012,12 @@ pub fn animate_pyramid_setup_pulse(
     ui_state: Res<crate::ui::hud::UiState>,
     initial_rolls: Option<Res<crate::systems::setup::InitialSetupRolls>>,
     mut pyramid_query: Query<(&mut Transform, Option<&PyramidShakeAnimation>), With<PyramidRollButton>>,
-    dice_query: Query<&DiceRollAnimation>,
+    _dice_query: Query<&DiceRollAnimation>,
 ) {
-    // Only pulse during setup, when not started or when waiting for next tap
+    // Only pulse during setup, when waiting for user to click for the next roll
     let should_pulse = if let Some(rolls) = initial_rolls {
-        // Setup phase: pulse when waiting for user to start or when dice is done rolling
-        !ui_state.initial_rolls_complete && (
-            !rolls.started ||
-            (dice_query.is_empty() && rolls.current_roll_index < rolls.camel_rolls.len())
-        )
+        // Setup phase: pulse when waiting for a click to trigger the next roll
+        !ui_state.initial_rolls_complete && rolls.waiting_for_click
     } else {
         false
     };
@@ -1030,8 +1027,8 @@ pub fn animate_pyramid_setup_pulse(
     }
 
     const PULSE_SCALE_MIN: f32 = 1.0;
-    const PULSE_SCALE_MAX: f32 = 1.15;
-    const PULSE_SPEED: f32 = 2.0; // Hz
+    const PULSE_SCALE_MAX: f32 = 1.05;
+    const PULSE_SPEED: f32 = 1.2; // Hz
 
     for (mut transform, shaking) in pyramid_query.iter_mut() {
         // Don't modify scale while shaking
@@ -1039,9 +1036,11 @@ pub fn animate_pyramid_setup_pulse(
             continue;
         }
 
-        let pulse = (time.elapsed_secs() * PULSE_SPEED * std::f32::consts::TAU).sin();
-        let pulse_normalized = (pulse + 1.0) / 2.0; // Map -1..1 to 0..1
-        let scale = PULSE_SCALE_MIN + (PULSE_SCALE_MAX - PULSE_SCALE_MIN) * pulse_normalized;
+        // Ease-out curve: lingers at max scale, quick through min scale
+        let t = (time.elapsed_secs() * PULSE_SPEED * std::f32::consts::TAU).sin();
+        let pulse_normalized = (t + 1.0) / 2.0; // Map -1..1 to 0..1
+        let eased = 1.0 - (1.0 - pulse_normalized).powi(3);
+        let scale = PULSE_SCALE_MIN + (PULSE_SCALE_MAX - PULSE_SCALE_MIN) * eased;
         transform.scale = Vec3::splat(scale);
     }
 }

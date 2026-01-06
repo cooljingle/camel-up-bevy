@@ -177,9 +177,9 @@ pub fn main_menu_ui(
                                                     // Cycle on click
                                                     if response.clicked() {
                                                         let current_idx = character_id as usize;
-                                                        for offset in 1..=8 {
+                                                        for offset in 1..=16 {
                                                             let next = CharacterId::from_index(
-                                                                (current_idx + offset) % 8,
+                                                                (current_idx + offset) % 16,
                                                             );
                                                             if !used.contains(&next) {
                                                                 config.players[i].character_id = next;
@@ -619,7 +619,7 @@ fn draw_pyramid_background(painter: &egui::Painter, rect: egui::Rect, time: f32)
 
     // Draw walking camels on the sand
     let screen_width = rect.width();
-    let camel_speed = 25.0; // pixels per second
+    let camel_speed = 35.0; // pixels per second
 
     // Create list of all possible camels (5 regular + 1 crazy)
     let mut all_camels = vec![
@@ -652,10 +652,10 @@ fn draw_pyramid_background(painter: &egui::Painter, rect: egui::Rect, time: f32)
     let camel_configs = [
         // (phase_offset, scale, y_offset from horizon, speed_mult)
         (0.0, 0.8, 20.0, 1.0),   // Closer, larger
-        (2.0, 0.5, 8.0, 0.8),    // Farther, smaller (near horizon)
-        (4.5, 0.65, 14.0, 0.9),  // Middle distance
-        (6.0, 0.7, 16.0, 0.95),  // Another middle distance
-        (8.5, 0.55, 10.0, 0.85), // Another far distance
+        (2.0, 0.5, 8.0, 0.7),    // Farther, smaller (near horizon)
+        (4.5, 0.65, 14.0, 0.85), // Middle distance
+        (6.0, 0.7, 16.0, 0.9),   // Another middle distance
+        (8.5, 0.55, 10.0, 0.75), // Another far distance
     ];
 
     for (i, (phase, scale, y_off, speed_mult)) in camel_configs.iter().enumerate() {
@@ -680,7 +680,7 @@ fn draw_pyramid_background(painter: &egui::Painter, rect: egui::Rect, time: f32)
         let camel_y = horizon_y + y_off;
 
         // Use alpha for distance fading (smaller scale = farther away = more faded)
-        let alpha = ((200.0 * scale) as u8).max(100);
+        let alpha = ((300.0 * scale) as u8).max(100);
 
         draw_walking_camel(
             painter,
