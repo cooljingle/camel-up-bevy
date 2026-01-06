@@ -3544,7 +3544,10 @@ pub fn update_camel_position_animations(
                     let rank_difference = new_rank as i32 - old_rank as i32;
                     -rank_difference as f32 * CAMEL_POSITION_ROW_HEIGHT
                 } else {
-                    0.0
+                    // Brand new camel entering the race - start at the back (rightmost position)
+                    // This makes it spawn at the "end" and animate swapping to its correct position
+                    let num_existing_camels = animations.last_order.len();
+                    -(new_rank as i32 - num_existing_camels as i32) as f32 * CAMEL_POSITION_ROW_HEIGHT
                 };
                 animations.positions.push(AnimatedCamelPosition {
                     color,
