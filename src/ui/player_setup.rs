@@ -86,13 +86,14 @@ impl Default for PlayerSetupConfig {
 
         // Start with 1 human + 3 AI players by default
         // AI players get random thematic names based on their character
+        // Player 1 always has red background (0) and Scholar/Wisdom avatar (6)
         Self {
             players: vec![
                 PlayerConfig {
                     name: "Player 1".to_string(),
                     is_ai: false,
-                    character_id: character_ids[0],
-                    color_index: color_indices[0],
+                    character_id: CharacterId::from_index(6), // Scholar/Wisdom
+                    color_index: 0, // Red
                     name_edited: false,
                 },
                 PlayerConfig {
