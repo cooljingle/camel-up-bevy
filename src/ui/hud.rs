@@ -1600,7 +1600,7 @@ fn render_mobile_ui(
     _spectator_tile_action: &mut MessageWriter<PlaceSpectatorTileAction>,
     _camels: &Query<(&Camel, &BoardPosition), Without<PendingInitialMove>>,
     current_player_color: egui::Color32,
-    initial_rolls: &mut Option<ResMut<crate::systems::setup::InitialSetupRolls>>,
+    _initial_rolls: &mut Option<ResMut<crate::systems::setup::InitialSetupRolls>>,
 ) {
     let current = players.current_player();
     let can_act = !turn_state.action_taken
@@ -2172,7 +2172,7 @@ fn render_desktop_ui(
     _spectator_tile_action: &mut MessageWriter<PlaceSpectatorTileAction>,
     camels: &Query<(&Camel, &BoardPosition), Without<PendingInitialMove>>,
     current_player_color: egui::Color32,
-    initial_rolls: &mut Option<ResMut<crate::systems::setup::InitialSetupRolls>>,
+    _initial_rolls: &mut Option<ResMut<crate::systems::setup::InitialSetupRolls>>,
 ) {
     // Bottom panel - Pyramid tokens display (Dice tents are now Bevy sprites)
     egui::TopBottomPanel::bottom("dice_info").show(ctx, |ui| {

@@ -1206,7 +1206,7 @@ fn draw_sultan(painter: &egui::Painter, center: Pos2, radius: f32, happy: bool) 
     let skin = SKIN_TAN;
     let turban_color = Color32::from_rgb(150, 30, 30); // Deep red
     let turban_wrap = Color32::from_rgb(200, 180, 100); // Gold wrap
-    let gold = Color32::from_rgb(255, 200, 50);
+    let _gold = Color32::from_rgb(255, 200, 50);
 
     // Tall turban base
     let turban_y = center.y - radius * 0.55;
