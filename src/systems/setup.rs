@@ -1156,10 +1156,11 @@ pub fn setup_game(
         ));
 
         // Spawn camels at staging position (staggered vertically so they're visible)
+        // Use final stack_pos for z-index to ensure correct layering
         let staging_pos = Vec3::new(
             CAMEL_STAGING_X,
             CAMEL_STAGING_Y + (i as f32 * 35.0), // Stack them vertically at staging
-            10.0 + i as f32,
+            10.0 + stack_pos as f32,
         );
         spawn_racing_camel(
             &mut commands,
@@ -1212,10 +1213,11 @@ pub fn setup_game(
         ));
 
         // Spawn crazy camels at staging position (on the left side, same as racing camels)
+        // Use final stack_pos for z-index to ensure correct layering
         let staging_pos = Vec3::new(
             CAMEL_STAGING_X, // Left side (negative X) - same as racing camels
             CAMEL_STAGING_Y + ((racing_camel_count + i) as f32 * 35.0),
-            10.0 + i as f32,
+            10.0 + stack_pos as f32,
         );
         spawn_crazy_camel(
             &mut commands,
