@@ -1254,7 +1254,7 @@ pub fn setup_game(
 }
 
 /// Clean up game resources when leaving the Playing state.
-/// Note: Game entities are automatically despawned by DespawnOnExit(GameState::GameEnd).
+/// Explicitly despawns all game entities to ensure clean restart.
 pub fn cleanup_game(
     mut commands: Commands,
     mut ui_state: ResMut<crate::ui::hud::UiState>,
@@ -1263,6 +1263,17 @@ pub fn cleanup_game(
     mut camel_position_anims: ResMut<crate::ui::hud::CamelPositionAnimations>,
     mut rules_state: ResMut<crate::ui::rules::RulesState>,
     mut ai_think_timer: ResMut<crate::game::ai::AiThinkTimer>,
+    // Queries to find all game entities
+    camels: Query<Entity, With<Camel>>,
+    crazy_camels: Query<Entity, With<CrazyCamel>>,
+    camel_sprites: Query<Entity, With<CamelSprite>>,
+    board_spaces: Query<Entity, With<board::BoardSpace>>,
+    dice_tents: Query<Entity, With<board::DiceTent>>,
+    pyramid: Query<Entity, With<PyramidRollButton>>,
+    setup_arrows: Query<Entity, With<board::SetupArrow>>,
+    setup_text: Query<Entity, With<board::SetupText>>,
+    start_button: Query<Entity, With<board::StartGameButton>>,
+    finish_markers: Query<Entity, With<board::FinishMarker>>,
 ) {
     // Reset all UI and game state
     *ui_state = crate::ui::hud::UiState::default();
@@ -1271,6 +1282,39 @@ pub fn cleanup_game(
     *camel_position_anims = crate::ui::hud::CamelPositionAnimations::default();
     *rules_state = crate::ui::rules::RulesState::default();
     *ai_think_timer = crate::game::ai::AiThinkTimer::default();
+
+    // Explicitly despawn all game entities to ensure they don't persist
+    // This prevents the "existing_camels" check in setup_game from failing
+    for entity in camels.iter() {
+        commands.entity(entity).despawn_recursive();
+    }
+    for entity in crazy_camels.iter() {
+        commands.entity(entity).despawn_recursive();
+    }
+    for entity in camel_sprites.iter() {
+        commands.entity(entity).despawn_recursive();
+    }
+    for entity in board_spaces.iter() {
+        commands.entity(entity).despawn_recursive();
+    }
+    for entity in dice_tents.iter() {
+        commands.entity(entity).despawn_recursive();
+    }
+    for entity in pyramid.iter() {
+        commands.entity(entity).despawn_recursive();
+    }
+    for entity in setup_arrows.iter() {
+        commands.entity(entity).despawn_recursive();
+    }
+    for entity in setup_text.iter() {
+        commands.entity(entity).despawn_recursive();
+    }
+    for entity in start_button.iter() {
+        commands.entity(entity).despawn_recursive();
+    }
+    for entity in finish_markers.iter() {
+        commands.entity(entity).despawn_recursive();
+    }
 
     // Remove all game resources that are inserted during setup_game
     // These must be removed so they can be re-inserted fresh on next game start
@@ -1286,7 +1330,7 @@ pub fn cleanup_game(
     commands.remove_resource::<PlayerPyramidTokens>();
     commands.remove_resource::<InitialSetupRolls>();
 
-    info!("Game cleanup complete!");
+    info!("Game cleanup complete - all entities despawned and resources removed!");
 }
 
 /// System to manage setup UI visibility (arrow/text -> Start Game button)
