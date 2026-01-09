@@ -1270,12 +1270,11 @@ pub fn cleanup_game(
     crazy_camels: Query<Entity, With<CrazyCamel>>,
     camel_sprites: Query<Entity, With<CamelSprite>>,
     board_spaces: Query<Entity, With<board::BoardSpace>>,
-    dice_tents: Query<Entity, With<board::DiceTent>>,
+    dice_tents: Query<Entity, With<DiceTent>>,
     pyramid: Query<Entity, With<PyramidRollButton>>,
     setup_arrows: Query<Entity, With<board::SetupArrow>>,
     setup_text: Query<Entity, With<board::SetupText>>,
     start_button: Query<Entity, With<board::StartGameButton>>,
-    finish_markers: Query<Entity, With<board::FinishMarker>>,
 ) {
     // Reset all UI and game state
     *ui_state = crate::ui::hud::UiState::default();
@@ -1288,34 +1287,31 @@ pub fn cleanup_game(
     // Explicitly despawn all game entities to ensure they don't persist
     // This prevents the "existing_camels" check in setup_game from failing
     for entity in camels.iter() {
-        commands.entity(entity).despawn_recursive();
+        commands.entity(entity).despawn();
     }
     for entity in crazy_camels.iter() {
-        commands.entity(entity).despawn_recursive();
+        commands.entity(entity).despawn();
     }
     for entity in camel_sprites.iter() {
-        commands.entity(entity).despawn_recursive();
+        commands.entity(entity).despawn();
     }
     for entity in board_spaces.iter() {
-        commands.entity(entity).despawn_recursive();
+        commands.entity(entity).despawn();
     }
     for entity in dice_tents.iter() {
-        commands.entity(entity).despawn_recursive();
+        commands.entity(entity).despawn();
     }
     for entity in pyramid.iter() {
-        commands.entity(entity).despawn_recursive();
+        commands.entity(entity).despawn();
     }
     for entity in setup_arrows.iter() {
-        commands.entity(entity).despawn_recursive();
+        commands.entity(entity).despawn();
     }
     for entity in setup_text.iter() {
-        commands.entity(entity).despawn_recursive();
+        commands.entity(entity).despawn();
     }
     for entity in start_button.iter() {
-        commands.entity(entity).despawn_recursive();
-    }
-    for entity in finish_markers.iter() {
-        commands.entity(entity).despawn_recursive();
+        commands.entity(entity).despawn();
     }
 
     // Remove all game resources that are inserted during setup_game
