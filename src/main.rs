@@ -9,6 +9,7 @@ use winit::window::Icon;
 
 mod components;
 mod game;
+mod network;
 mod systems;
 mod ui;
 
@@ -37,10 +38,12 @@ use systems::turn::{
     PlaceSpectatorTileAction, PlayerLegBetsStore, PlayerPyramidTokens, PyramidRollResult,
     RollPyramidAction, TakeLegBetAction, TurnState,
 };
+use network::NetworkPlugin;
 use ui::hud::{
     game_hud_ui, leg_scoring_modal_ui, update_camel_position_animations, update_dice_popup_timer,
     update_ui_on_crazy_roll, update_ui_on_roll, CamelPositionAnimations, UiState,
 };
+use ui::lobby::{lobby_ui, waiting_room_ui, cleanup_lobby, LobbyState};
 use ui::main_menu::main_menu_ui;
 use ui::player_setup::PlayerSetupConfig;
 use ui::rules::RulesState;
@@ -76,10 +79,12 @@ fn main() {
         ..default()
     }))
     .add_plugins(EguiPlugin::default())
+    .add_plugins(NetworkPlugin)
     // Game states
     .init_state::<GameState>()
     // Resources
     .init_resource::<UiState>()
+    .init_resource::<LobbyState>()
     .init_resource::<CamelPositionAnimations>()
     .init_resource::<PlayerSetupConfig>()
     .init_resource::<AiConfig>()
@@ -119,6 +124,16 @@ fn main() {
             EguiPrimaryContextPass,
             main_menu_ui.run_if(in_state(GameState::MainMenu)),
         )
+        .add_systems(
+            EguiPrimaryContextPass,
+            lobby_ui.run_if(in_state(GameState::Lobby)),
+        )
+        .add_systems(
+            EguiPrimaryContextPass,
+            waiting_room_ui.run_if(in_state(GameState::WaitingRoom)),
+        )
+        .add_systems(OnExit(GameState::Lobby), cleanup_lobby)
+        .add_systems(OnExit(GameState::WaitingRoom), cleanup_lobby)
         .add_systems(
             EguiPrimaryContextPass,
             game_hud_ui.run_if(in_state(GameState::Playing)),

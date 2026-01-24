@@ -158,7 +158,17 @@ fn desert_button_impl(
         egui::Sense::hover()
     };
 
-    let (rect, response) = ui.allocate_exact_size(style.min_size, sense);
+    // Measure text to determine required width
+    let font_id = egui::FontId::proportional(style.font_size);
+    let text_size = ui.painter().layout_no_wrap(text.to_string(), font_id, egui::Color32::WHITE).size();
+    let padding = 20.0; // Horizontal padding on each side
+    let required_width = text_size.x + padding * 2.0;
+    let desired_size = egui::vec2(
+        required_width.max(style.min_size.x),
+        style.min_size.y,
+    );
+
+    let (rect, response) = ui.allocate_exact_size(desired_size, sense);
 
     if ui.is_rect_visible(rect) {
         let painter = ui.painter();

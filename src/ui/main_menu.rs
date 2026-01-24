@@ -326,8 +326,15 @@ pub fn main_menu_ui(
 
                     ui.add_space(if is_mobile { 10.0 } else { 15.0 });
 
-                    // How to Play button
+                    // Play Online button
                     let medium_style = DesertButtonStyle::medium();
+                    if desert_button(ui, "Play Online", &medium_style).clicked() {
+                        next_state.set(GameState::Lobby);
+                    }
+
+                    ui.add_space(if is_mobile { 10.0 } else { 15.0 });
+
+                    // How to Play button
                     if desert_button(ui, "How to Play", &medium_style).clicked() {
                         rules_state.is_open = true;
                     }

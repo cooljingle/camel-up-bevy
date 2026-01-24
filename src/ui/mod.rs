@@ -8,3 +8,4 @@ pub mod player_setup;
 pub mod characters;
 pub mod rules;
 pub mod theme;
+pub mod lobby;

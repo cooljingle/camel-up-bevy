@@ -1292,6 +1292,7 @@ pub fn cleanup_game(
 /// System to manage setup UI visibility (arrow/text -> Start Game button)
 pub fn hide_setup_instructions_system(
     ui_state: Res<crate::ui::hud::UiState>,
+    network_state: Res<crate::network::state::NetworkState>,
     mut arrow_query: Query<
         &mut Visibility,
         (With<board::SetupArrow>, Without<board::SetupText>, Without<board::StartGameButton>),
@@ -1305,6 +1306,24 @@ pub fn hide_setup_instructions_system(
         (With<board::StartGameButton>, Without<board::SetupArrow>, Without<board::SetupText>),
     >,
 ) {
+    // In online mode, non-host players should not see setup instructions at all
+    // They just watch the host do the init rolls
+    let is_non_host_online = network_state.is_online() && !network_state.is_host();
+
+    if is_non_host_online {
+        // Hide all setup UI for non-host players
+        for mut visibility in arrow_query.iter_mut() {
+            *visibility = Visibility::Hidden;
+        }
+        for mut visibility in text_query.iter_mut() {
+            *visibility = Visibility::Hidden;
+        }
+        for mut visibility in button_query.iter_mut() {
+            *visibility = Visibility::Hidden;
+        }
+        return;
+    }
+
     // When camel rolls are complete, hide arrow/text and show Start Game button
     if ui_state.camel_rolls_complete {
         for mut visibility in arrow_query.iter_mut() {

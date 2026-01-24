@@ -811,6 +811,7 @@ pub fn handle_pyramid_click(
     shake_query: Query<(), With<PyramidShakeAnimation>>,
     mut initial_rolls: Option<ResMut<crate::systems::setup::InitialSetupRolls>>,
     dice_query: Query<(), With<crate::systems::animation::DiceSprite>>,
+    network_state: Res<crate::network::state::NetworkState>,
 ) {
     // === SETUP PHASE: Handle clicks during initial setup ===
     if !ui_state.initial_rolls_complete {
@@ -831,6 +832,12 @@ pub fn handle_pyramid_click(
 
         // If camel rolls are complete, check for Start Game button click
         if ui_state.camel_rolls_complete {
+            // In online mode, only the host can click Start Game
+            // (Non-host players already started the game from the lobby)
+            if network_state.is_online() && !network_state.is_host() {
+                return;
+            }
+
             // Check if click is on Start Game button (use a reasonable hit area)
             let button_half_size = Vec2::new(80.0, 20.0);
 
@@ -853,6 +860,12 @@ pub fn handle_pyramid_click(
 
         // Camel rolls not complete - handle pyramid clicks for rolling
         if let Some(ref mut rolls) = initial_rolls {
+            // In online mode, only the host can do init rolls
+            if network_state.is_online() && !network_state.is_host() {
+                // Non-host players can't do init rolls - they'll receive state from host
+                return;
+            }
+
             // Don't allow click if dice is currently rolling
             if !dice_query.is_empty() {
                 return;
@@ -965,6 +978,7 @@ pub fn handle_pyramid_hover(
     turn_state: Res<TurnState>,
     pyramid: Res<Pyramid>,
     shake_query: Query<(), With<PyramidShakeAnimation>>,
+    network_state: Res<crate::network::state::NetworkState>,
 ) {
     // Get cursor position
     let cursor_pos = windows.single().ok().and_then(|w| w.cursor_position());
@@ -982,7 +996,26 @@ pub fn handle_pyramid_hover(
     let Ok(world_pos) = camera.viewport_to_world_2d(camera_transform, screen_pos) else { return };
 
     // Check if pyramid is interactive (can be clicked)
-    let is_interactive = ui_state.initial_rolls_complete
+    // In online mode, non-host players should never see hover during setup phase
+    let is_non_host_online = network_state.is_online() && !network_state.is_host();
+    let is_setup_phase = !ui_state.initial_rolls_complete;
+
+    // Non-host in online mode: no interaction during setup at all
+    if is_non_host_online && is_setup_phase {
+        // Remove hover from all pyramids for non-host during setup
+        for (entity, _, hovered) in pyramid_query.iter() {
+            if hovered.is_some() {
+                commands.entity(entity).remove::<PyramidHovered>();
+            }
+        }
+        return;
+    }
+
+    let can_interact_in_setup = is_setup_phase
+        && !ui_state.camel_rolls_complete  // Still doing init rolls
+        && (!network_state.is_online() || network_state.is_host());  // Local mode or host
+
+    let can_interact_in_gameplay = ui_state.initial_rolls_complete
         && !ui_state.show_leg_scoring
         && !ui_state.show_winner_betting
         && !ui_state.show_loser_betting
@@ -990,6 +1023,8 @@ pub fn handle_pyramid_hover(
         && players.as_ref().map_or(false, |p| !p.current_player().is_ai)
         && !turn_state.action_taken
         && !pyramid.all_dice_rolled();
+
+    let is_interactive = can_interact_in_setup || can_interact_in_gameplay;
 
     let pyramid_size = Vec2::splat(PYRAMID_SIZE);
     let half_size = pyramid_size * 0.5;
