@@ -428,7 +428,7 @@ pub fn handle_spectator_tile_action(
 
         // Parent entity with spectator tile component
         commands.spawn((
-            DespawnOnExit(GameState::Playing),
+            DespawnOnExit(GameState::GameEnd),
             SpectatorTile {
                 owner_id: player.id,
                 is_oasis: event.is_oasis,

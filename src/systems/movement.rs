@@ -24,9 +24,9 @@ pub struct MovementCompleteEvent {
 }
 
 /// Animation duration per hop in seconds
-const CAMEL_HOP_DURATION: f32 = 0.15;
+const CAMEL_HOP_DURATION: f32 = 0.25;
 /// Animation duration for simple vertical shifts (existing camels being displaced)
-const CAMEL_SHIFT_DURATION: f32 = 0.3;
+const CAMEL_SHIFT_DURATION: f32 = 0.4;
 
 /// Generate waypoints for multi-step movement animation with stack-aware hopping
 /// For intermediate spaces, camels hop to the top of existing stacks

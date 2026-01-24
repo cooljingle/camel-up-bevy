@@ -503,7 +503,10 @@ fn draw_standings_pre_bets_phase(
                 })
                 .show(ui, |ui| {
                     ui.vertical_centered(|ui| {
-                        ui.heading(egui::RichText::new("Current Standings").size(36.0).strong());
+                        ui.horizontal(|ui| {
+                            ui.add_space(5.0);
+                            ui.heading(egui::RichText::new("Current Standings").size(36.0).strong());
+                        });
                         ui.add_space(10.0);
                         ui.label(egui::RichText::new("Before Long-Term Bet Results").size(16.0).color(egui::Color32::GRAY));
                         ui.add_space(30.0);
@@ -674,7 +677,10 @@ fn draw_winner_bets_reveal_phase(
                         // Current standings with progress bars
                         // Only show heading on desktop to save vertical space on mobile
                         if !is_mobile {
-                            ui.label(egui::RichText::new("Current Standings").size(18.0).strong());
+                            ui.horizontal(|ui| {
+                                ui.add_space(5.0);
+                                ui.label(egui::RichText::new("Current Standings").size(18.0).strong());
+                            });
                             ui.add_space(10.0);
                         }
 
@@ -877,7 +883,10 @@ fn draw_loser_bets_reveal_phase(
                         // Current standings with progress bars
                         // Only show heading on desktop to save vertical space on mobile
                         if !is_mobile {
-                            ui.label(egui::RichText::new("Current Standings").size(18.0).strong());
+                            ui.horizontal(|ui| {
+                                ui.add_space(5.0);
+                                ui.label(egui::RichText::new("Current Standings").size(18.0).strong());
+                            });
                             ui.add_space(10.0);
                         }
 
